@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>採用マーケティング 分析 → 企画 → プロンプト生成 | Principle</title>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #f6f8fb; }
+  body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const useState = React.useState;
+const useMemo = React.useMemo;
+
+const DEFAULT_ANALYSIS = {
+  own_count: 12,
+  comp_count: 7,
+  themes: [
+    { name: "誰と働く(社員・カルチャー)", own: 33, comp: 57 },
+    { name: "成長・育成", own: 42, comp: 29 },
+    { name: "入社後リアル(仕事・1日)", own: 8, comp: 57 },
+    { name: "選考・就活", own: 25, comp: 29 },
+    { name: "ビジョン・理念", own: 25, comp: 0 },
+    { name: "事業・専門性", own: 42, comp: 14 },
+    { name: "働き方・制度", own: 17, comp: 0 },
+    { name: "多様性・グローバル", own: 8, comp: 0 }
+  ],
+  keywords: [["1日", 5], ["社員", 5], ["現場", 4], ["業務", 3], ["スケジュール", 3], ["メンバー", 3], ["チーム", 3], ["配属", 2], ["リアル", 2], ["内定", 2], ["選考", 2], ["案件", 2], ["コンサル", 2], ["カルチャー", 2], ["仲間", 2]],
+  suggestions: [
+    {
+      id: "theme1",
+      title: "新卒1〜2年目のリアルな1日",
+      gap: "入社後リアル(仕事・1日)",
+      diff: "+49pt",
+      kind: "空白を埋める",
+      summary: "就活生最大の不安『入社後どう働くか』に、若手社員の1日を時系列で見せて応える。",
+      target: "入社後リアル",
+      pillar: "自立したプロフェッショナル(成長過程の可視化)"
+    },
+    {
+      id: "theme2",
+      title: "なぜこの人たちと働きたいと思えるのか",
+      gap: "誰と働く(社員・カルチャー)",
+      diff: "+24pt",
+      kind: "空白を埋める",
+      summary: "御社が大切にする「誰と働くか」を、若手社員本人の言葉と具体的なエピソードで証明する。",
+      target: "誰と働く, Win-Win",
+      pillar: "原則と人格/Win-Win"
+    },
+    {
+      id: "theme3",
+      title: "データの力で、新卒が最前線で成長できる理由",
+      gap: "事業・専門性",
+      diff: "強み活用",
+      kind: "強みを伸ばす",
+      summary: "事業の専門性(データ解析・デジタルマーケティング)を、新卒の成長機会として翻訳して伝える。",
+      target: "成長, ビジョン実現",
+      pillar: "データドリブン/世界基準のプロフェッショナル"
+    }
+  ]
+};
+
+const CHANNELS = [
+  { id: "blog", label: "採用ブログ", spec: "2,000-4,000字/見出し構造/丁寧・ストーリー/絵文字なし/SEO意識" },
+  { id: "note", label: "note", spec: "1,500-3,000字/読み物・深掘り/絵文字控えめ" },
+  { id: "wantedly", label: "Wantedly", spec: "1,500-2,500字/熱量・カルチャー共感・等身大/写真前提" },
+  { id: "instagram", label: "Instagram", spec: "キャプション200-300字＋画像案/親しみ・絵文字可" },
+  { id: "x", label: "X", spec: "140字×最大4連投/カジュアル・フック重視・拡散" }
+];
+
+const BRAND_CONTEXT = [
+  "あなたは株式会社プリンシプルの新卒採用マーケティング担当のコピーライターです。",
+  "",
+  "【会社概要】",
+  "・企業名:株式会社プリンシプル(Principle Co.,Ltd.)",
+  "・設立:2011年10月20日",
+  "・本社:東京都千代田区神田駿河台4-2-5 トライエッジ御茶ノ水10階",
+  "・従業員数:約100名(パートナー含む)",
+  "・事業:データ解析を軸としたデジタルマーケティング戦略の立案と実行/リスティング広告・SEO・LPOなどの集客施策/北米を中心とした海外進出支援",
+  "・強み:解析・戦略・実行・アフターフォローを一気通貫で提供できること。各分野のトップスペシャリスト(GA4・GTM・BigQuery、Tableau・Looker StudioによるBI、SEO、Web広告など)がチームで課題を解決する。書籍執筆・セミナー登壇実績を持つメンバーが在籍。",
+  "",
+  "【MVV(正式文言)】",
+  "・Mission:データとアクションをつなぎ、よりよい世界を実現します(データの取得・可視化により意思決定をサポートし、アクションにつなげることで、世界中の企業とその先にいる人々をより幸せにする)",
+  "・Vision:世界で最も信頼されるマーケティングDXパートナー",
+  "・Value1:人間としての原則を重視し、Win-Winであることを実現します(表面的な成功ではなく「原則」と「人格」を重視。個人が会社に貢献し、会社は個人のWINの実現をサポートし、自分・家族・同僚・顧客・世界のWin-Winを目指す)",
+  "・Value2:自立したプロフェッショナルがチームとなって高い成果をあげます(個人がビジネスマインドを持ち自らを鍛え成長するプロフェッショナルとなり、チームで相乗効果を発揮して期待を上回る品質と成果を出す)",
+  "・Value3:世界基準で考え、多様性に価値を置きます(世界基準で考えるグローバル企業として、考え方・文化・言語・働き方・性別などの多様性を尊重する)",
+  "",
+  "【行動規範(7つ)】",
+  "1. 主体性を発揮します",
+  "2. 実践しやり切ります",
+  "3. チャレンジから学びます",
+  "4. 第2領域(緊急ではないが重要なこと)を大切にします",
+  "5. 信用残高を大切にします",
+  "6. 率直であります",
+  "7. 人を育てます",
+  "",
+  "【訴求の核】Win-Win(個人と会社の幸せの両立)/原則(Principle)と人格を重視/「何をするかより誰と働くか」/自立したプロフェッショナルへの成長環境/データドリブン/世界基準・多様性。",
+  "【ターゲット】新卒・大学3-4年生の就活生。知りたいのは「誰と働くか」「成長できるか」「入社後のリアル」「自分のビジョンが叶うか」。",
+  "【トンマナ】誠実・等身大。煽らない、誇張しない、上から目線にしない。データや事実に基づく説得力。専門用語は新卒にわかる言葉に開く。",
+  "【厳守】上記の確定情報(会社概要・MVV・行動規範・事業・専門性)は事実として使ってよい。それ以外で、具体的な制度名・数値・特定社員の経歴など確証のない情報は創作せず、その箇所は [要確認: ◯◯] と明示する。内定確約や過度なプレッシャー表現は禁止。"
+].join("\n");
+
+function diffLabel(d) {
+  if (d >= 20) return { text: "競合が厚い＝空白候補", cls: "gap" };
+  if (d <= -20) return { text: "自社の強み", cls: "strong" };
+  return { text: "拮抗", cls: "even" };
+}
+
+function App() {
+  const analysisState = useState(DEFAULT_ANALYSIS);
+  const analysis = analysisState[0];
+  const setAnalysis = analysisState[1];
+
+  const isRealState = useState(true);
+  const isReal = isRealState[0];
+  const setIsReal = isRealState[1];
+
+  const showLoaderState = useState(false);
+  const showLoader = showLoaderState[0];
+  const setShowLoader = showLoaderState[1];
+
+  const pasteTextState = useState("");
+  const pasteText = pasteTextState[0];
+  const setPasteText = pasteTextState[1];
+
+  const loadMsgState = useState("");
+  const loadMsg = loadMsgState[0];
+  const setLoadMsg = loadMsgState[1];
+
+  const selectedThemeState = useState(null);
+  const selectedTheme = selectedThemeState[0];
+  const setSelectedTheme = selectedThemeState[1];
+
+  const customTitleState = useState("");
+  const customTitle = customTitleState[0];
+  const setCustomTitle = customTitleState[1];
+
+  const customSummaryState = useState("");
+  const customSummary = customSummaryState[0];
+  const setCustomSummary = customSummaryState[1];
+
+  const selectedChannelState = useState("blog");
+  const selectedChannel = selectedChannelState[0];
+  const setSelectedChannel = selectedChannelState[1];
+
+  const promptState = useState("");
+  const promptText = promptState[0];
+  const setPromptText = promptState[1];
+
+  const copiedState = useState(false);
+  const copied = copiedState[0];
+  const setCopied = copiedState[1];
+
+  const THEMES = analysis.suggestions;
+  const currentChannel = CHANNELS.find(function(c) { return c.id === selectedChannel; }) || CHANNELS[0];
+  const canGenerate = selectedTheme === "custom" ? customTitle.trim().length > 0 : !!selectedTheme;
+
+  function applyData(obj) {
+    if (!obj || !Array.isArray(obj.themes) || !Array.isArray(obj.suggestions)) {
+      setLoadMsg("⚠ 形式が違います。analyze_trends.py が出力した analysis_data.json を読み込んでください。");
+      return;
+    }
+    const ownCount = obj.own_count != null ? obj.own_count : obj.themes.length;
+    const compCount = obj.comp_count != null ? obj.comp_count : 0;
+    setAnalysis({
+      own_count: ownCount,
+      comp_count: compCount,
+      themes: obj.themes,
+      keywords: obj.keywords || [],
+      suggestions: obj.suggestions
+    });
+    setIsReal(true);
+    setSelectedTheme(null);
+    setPromptText("");
+    const dateStr = obj.date || "日付不明";
+    setLoadMsg("✓ 実データを読み込みました(" + dateStr + "・自社" + ownCount + "件/競合" + compCount + "件)");
+    setShowLoader(false);
+  }
+
+  function loadFromPaste() {
+    try { applyData(JSON.parse(pasteText)); }
+    catch (e) { setLoadMsg("⚠ JSONとして読み取れませんでした:" + e.message); }
+  }
+
+  function loadFromFile(ev) {
+    const files = ev.target.files;
+    const file = files && files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function() {
+      try { applyData(JSON.parse(reader.result)); }
+      catch (e) { setLoadMsg("⚠ ファイルを読み取れませんでした:" + e.message); }
+    };
+    reader.readAsText(file);
+  }
+
+  const gaps = useMemo(function() {
+    return analysis.themes
+      .map(function(t) { return Object.assign({}, t, { d: t.comp - t.own }); })
+      .filter(function(t) { return t.d >= 20; })
+      .sort(function(a, b) { return b.d - a.d; });
+  }, [analysis]);
+
+  function buildPrompt() {
+    if (!canGenerate) return;
+    let theme;
+    if (selectedTheme === "custom") {
+      theme = {
+        title: customTitle.trim(),
+        summary: customSummary.trim() || "(概要の記載なし。タイトルから方向性を汲んで作成)",
+        target: "(自由入力テーマ)",
+        pillar: "ブランドのトンマナに準拠"
+      };
+    } else {
+      theme = THEMES.find(function(t) { return t.id === selectedTheme; });
+    }
+
+    const channel = currentChannel;
+    const guides = [];
+    if (channel.id === "instagram") guides.push("- キャプション本文＋【画像案】を箇条書きで添える");
+    if (channel.id === "x") guides.push("- 1〜4本の連投として、各ツイートを「①②③④」で区切って書く");
+    if (channel.id === "blog" || channel.id === "note") guides.push("- 見出し(##)で構造化し、導入→本文→結びの流れにする");
+    if (channel.id === "wantedly") guides.push("- カルチャーへの共感を軸に、等身大の語り口で書く");
+    const channelGuide = guides.join("\n");
+
+    const lines = [
+      BRAND_CONTEXT,
+      "",
+      "以下のテーマと媒体で、新卒採用向けコンテンツの【草案】を作成してください。",
+      "",
+      "# テーマ",
+      "タイトル案:" + theme.title,
+      "狙い:" + theme.summary,
+      "ターゲットタグ:" + theme.target,
+      "訴求軸:" + theme.pillar,
+      "",
+      "# 媒体:" + channel.label,
+      "仕様:" + channel.spec,
+      "",
+      "# 出力要件",
+      "- 上記媒体の仕様(文字数・トーン・形式)に厳密に従う"
+    ];
+    if (channelGuide) lines.push(channelGuide);
+    lines.push(
+      "- 会社概要・MVV・行動規範・事業内容など、ブランド情報として与えられた確定事実は積極的に活用してよい",
+      "- それ以外で事実が必要な箇所に確証がなければ [要確認: ◯◯] と明示する",
+      "- 冒頭に媒体名と想定文字数のメモを1行付ける",
+      "- これは「草案」。人が確認・取材で補強する前提で、骨格と方向性を示すこと",
+      "",
+      "それでは草案を作成してください。"
+    );
+    const text = lines.join("\n");
+
+    setPromptText(text);
+    setCopied(false);
+    setTimeout(function() {
+      const el = document.getElementById("prompt-output");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
+
+  function copyPrompt() {
+    if (!navigator.clipboard) { setCopied(false); return; }
+    navigator.clipboard.writeText(promptText).then(function() {
+      setCopied(true);
+      setTimeout(function() { setCopied(false); }, 2000);
+    }).catch(function() { setCopied(false); });
+  }
+
+  const sortedThemes = analysis.themes
+    .map(function(t) { return Object.assign({}, t, { d: t.comp - t.own }); })
+    .sort(function(a, b) { return b.d - a.d; });
+
+  return (
+    <div style={s.wrap}>
+      <header style={s.hd}>
+        <div style={s.hdMark}>PRINCIPLE</div>
+        <h1 style={s.h1}>採用マーケティング 分析 → 企画 → プロンプト生成</h1>
+        <p style={s.hdSub}>自社 {analysis.own_count}件 / 競合 {analysis.comp_count}件の発信を分析。足りないテーマを見つけ、Claude.ai 等にそのまま貼って使えるプロンプトを生成します。</p>
+        <div style={s.brandNote}>★ 会社情報(MVV・行動規範・会社概要・事業/専門性)はアプリ内に埋め込み済み。プロンプトに自動で反映されます。</div>
+        <div style={s.dataRow}>
+          <span style={Object.assign({}, s.badge, isReal ? s.badgeReal : s.badgeSample)}>{isReal ? "● 実データ(埋め込み済み)" : "○ サンプルデータ"}</span>
+          <button style={s.dataBtn} onClick={function() { setShowLoader(!showLoader); }}>{showLoader ? "閉じる" : "データを更新する"}</button>
+        </div>
+        {showLoader && (
+          <div style={s.loader}>
+            <p style={s.loaderHelp}><code>analyze_trends.py</code> が出力した <code>data/analysis_data.json</code> を読み込みます。</p>
+            <label style={s.fileBtn}>JSONファイルを選択<input type="file" accept=".json" onChange={loadFromFile} hidden /></label>
+            <div style={s.pasteArea}>
+              <textarea style={s.pasteTA} placeholder="analysis_data.json の中身をここに貼り付け" value={pasteText} onChange={function(e) { setPasteText(e.target.value); }} />
+              <button style={Object.assign({}, s.pasteBtn, { opacity: pasteText.trim() ? 1 : 0.4 })} onClick={loadFromPaste} disabled={!pasteText.trim()}>貼り付けたJSONを反映</button>
+            </div>
+          </div>
+        )}
+        {loadMsg && <div style={s.loadMsg}>{loadMsg}</div>}
+      </header>
+
+      <section style={s.card}>
+        <div style={s.secNo}>01</div>
+        <h2 style={s.h2}>足りない情報の示唆(自社 vs 競合)</h2>
+        <p style={s.lead}>各テーマに言及した記事の割合。競合が厚く自社が薄いテーマが「ネタの空白」です。</p>
+        <div>
+          {sortedThemes.map(function(t) {
+            const lab = diffLabel(t.d);
+            const chipStyle = lab.cls === "gap" ? s.chipGap : lab.cls === "strong" ? s.chipStrong : s.chipEven;
+            return (
+              <div key={t.name} style={s.row}>
+                <div style={s.rowName}>{t.name}</div>
+                <div style={s.rowBars}>
+                  <div style={s.barLine}>
+                    <span style={s.barTag}>自社</span>
+                    <div style={s.track}><div style={Object.assign({}, s.fill, s.fillOwn, { width: t.own + "%" })} /></div>
+                    <span style={s.barVal}>{t.own}%</span>
+                  </div>
+                  <div style={s.barLine}>
+                    <span style={s.barTag}>競合</span>
+                    <div style={s.track}><div style={Object.assign({}, s.fill, s.fillComp, { width: t.comp + "%" })} /></div>
+                    <span style={s.barVal}>{t.comp}%</span>
+                  </div>
+                </div>
+                <div style={Object.assign({}, s.chip, chipStyle)}>{lab.text}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={s.insight}>
+          <strong>示唆:</strong>競合が語り自社が手薄な空白は
+          {gaps.map(function(g, i) {
+            return (
+              <span key={g.name}>
+                {i > 0 ? "、" : " "}
+                <b style={{ color: "#c2541f" }}>{g.name}</b>
+                (差{g.d >= 0 ? "+" : ""}{g.d}pt)
+              </span>
+            );
+          })}
+          。逆に「事業・専門性」「ビジョン・理念」は自社の強み。空白を埋めつつ強みを伸ばす方針を推奨します。
+        </div>
+      </section>
+
+      <section style={s.card}>
+        <div style={s.secNo}>02</div>
+        <h2 style={s.h2}>おすすめテーマを選ぶ</h2>
+        <p style={s.lead}>分析から導いた3つの企画、または自分でテーマを入力。1つ選んでください。</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {THEMES.map(function(t) {
+            const themeStyle = Object.assign({}, s.theme, selectedTheme === t.id ? s.themeOn : {});
+            return (
+              <button key={t.id} style={themeStyle} onClick={function() { setSelectedTheme(t.id); setPromptText(""); }}>
+                <div style={s.themeTop}>
+                  <span style={s.themeGap}>{t.gap}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#5b6573" }}>{t.diff}</span>
+                  {selectedTheme === t.id && <span style={s.themeCheck}>選択中 ✓</span>}
+                </div>
+                <div style={s.themeTitle}>{t.title}</div>
+                <div style={s.themeSum}>{t.summary}</div>
+                <div style={s.themeMeta}><span>🎯 {t.target}</span><span>◆ {t.pillar}</span></div>
+              </button>
+            );
+          })}
+          <div
+            style={Object.assign({}, s.theme, s.themeCustom, selectedTheme === "custom" ? s.themeOn : {})}
+            onClick={function() { if (selectedTheme !== "custom") { setSelectedTheme("custom"); setPromptText(""); } }}
+          >
+            <div style={s.themeTop}>
+              <span style={Object.assign({}, s.themeGap, { background: "#ede9fe", color: "#6d3bd4" })}>自分で入力</span>
+              {selectedTheme === "custom" && <span style={s.themeCheck}>選択中 ✓</span>}
+            </div>
+            <div style={s.themeTitle}>自由テーマで作る</div>
+            <div style={s.themeSum}>分析テーマ以外の思いつきや、社内で温めている企画を直接入力してプロンプトにできます。</div>
+            {selectedTheme === "custom" && (
+              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }} onClick={function(e) { e.stopPropagation(); }}>
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: "#5b6573" }}>テーマ(タイトル)<span style={{ color: "#c2541f", fontSize: 10, marginLeft: 6 }}>必須</span></label>
+                <input style={s.cfInput} type="text" placeholder="例:社員の副業エピソードから見るプリンシプルの自由度" value={customTitle} onChange={function(e) { setCustomTitle(e.target.value); }} />
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: "#5b6573", marginTop: 4 }}>概要・狙い(任意)</label>
+                <textarea style={Object.assign({}, s.cfInput, { minHeight: 64, resize: "vertical" })} placeholder="どんな内容にしたいか、誰に何を伝えたいかを簡単に。" value={customSummary} onChange={function(e) { setCustomSummary(e.target.value); }} />
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section style={Object.assign({}, s.card, { opacity: selectedTheme ? 1 : 0.55 })}>
+        <div style={s.secNo}>03</div>
+        <h2 style={s.h2}>媒体を選んでプロンプトを生成</h2>
+        <p style={s.lead}>{selectedTheme ? "投稿する媒体を選び、プロンプトを生成しましょう。生成されたプロンプトを Claude.ai 等にコピー＆ペーストして草案を作ります。" : "先に 02 でテーマを選んでください。"}</p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {CHANNELS.map(function(ch) {
+            const chStyle = Object.assign({}, s.channel, selectedChannel === ch.id ? s.channelOn : {}, { opacity: !selectedTheme ? 0.4 : 1 });
+            return <button key={ch.id} style={chStyle} disabled={!selectedTheme} onClick={function() { setSelectedChannel(ch.id); }}>{ch.label}</button>;
+          })}
+        </div>
+        {selectedTheme && <p style={{ fontSize: 12, color: "#5b6573", marginBottom: 16 }}>{currentChannel.spec}</p>}
+        <button style={Object.assign({}, s.gen, { opacity: !canGenerate ? 0.35 : 1 })} disabled={!canGenerate} onClick={buildPrompt}>
+          ▶ この内容でプロンプトを作成
+        </button>
+        {selectedTheme === "custom" && !customTitle.trim() && <p style={{ fontSize: 12, color: "#c2541f", textAlign: "center", marginTop: 8 }}>テーマ(タイトル)を入力するとプロンプトを作成できます。</p>}
+
+        {promptText && (
+          <div id="prompt-output" style={s.draftBox}>
+            <div style={s.draftHd}>
+              <span>プロンプト({currentChannel.label}向け / {promptText.length.toLocaleString()}文字)</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button style={Object.assign({}, s.copyBtn, copied ? s.copyBtnOn : {})} onClick={copyPrompt}>{copied ? "✓ コピー完了" : "📋 コピー"}</button>
+                <a style={s.openBtn} href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Claude.aiを開く ↗</a>
+              </div>
+            </div>
+            <div style={s.steps}>
+              <strong>使い方:</strong> ① 上の「📋 コピー」を押す → ② 「Claude.aiを開く」で新規チャットを開く → ③ そのまま貼り付けて送信 → ④ 出てきた草案を編集・取材で補強
+            </div>
+            <pre style={s.draftBody}>{promptText}</pre>
+            <p style={{ fontSize: 11.5, color: "#5b6573", padding: "0 18px 16px", margin: 0 }}>※ 生成された草案には [要確認: ◯◯] と書かれた箇所が含まれます。取材・事実確認で補強し、編集校閲担当の承認を経て投稿してください。</p>
+          </div>
+        )}
+      </section>
+
+      <footer style={{ textAlign: "center", fontSize: 11, color: "#5b6573", marginTop: 28 }}>
+        {isReal ? "実データに基づく分析です。" : "サンプルデータに基づく分析です。"}会社情報はアプリ内に埋め込み(MVV・行動規範・会社概要)。競合の本文は転用していません(テーマ傾向の把握のみ)。
+      </footer>
+    </div>
+  );
+}
+
+const c = {
+  ink: "#14181f", ink2: "#5b6573", line: "#e3e7ee", bg: "#f6f8fb",
+  own: "#1f6feb", comp: "#e8743b", accent: "#1f6feb"
+};
+const s = {
+  wrap: { fontFamily: '-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif', background: c.bg, color: c.ink, maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px", lineHeight: 1.6, minHeight: "100vh" },
+  hd: { marginBottom: 20 },
+  hdMark: { fontSize: 11, letterSpacing: "0.28em", fontWeight: 700, color: c.accent, marginBottom: 10 },
+  h1: { fontSize: 26, margin: "0 0 8px", letterSpacing: "-0.01em" },
+  hdSub: { color: c.ink2, fontSize: 14, margin: "0 0 10px" },
+  brandNote: { fontSize: 12, color: "#157a51", background: "#ddf3e8", border: "1px solid #b8e6d0", borderRadius: 8, padding: "8px 12px", marginBottom: 14 },
+  dataRow: { display: "flex", alignItems: "center", gap: 12, marginBottom: 8 },
+  badge: { fontSize: 11, fontWeight: 700, padding: "4px 11px", borderRadius: 999 },
+  badgeSample: { background: "#fff4e0", color: "#9a6700" },
+  badgeReal: { background: "#ddf3e8", color: "#157a51" },
+  dataBtn: { fontFamily: "inherit", fontSize: 12, cursor: "pointer", padding: "5px 13px", border: "1px solid " + c.line, borderRadius: 8, background: "#fff", color: c.ink },
+  loader: { margin: "12px 0", padding: 16, background: "#fff", border: "1px solid " + c.line, borderRadius: 11 },
+  loaderHelp: { fontSize: 12.5, color: c.ink2, margin: "0 0 12px" },
+  fileBtn: { display: "inline-block", fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: "8px 15px", border: "1.5px solid " + c.accent, color: c.accent, borderRadius: 9, marginBottom: 12 },
+  pasteArea: { display: "flex", flexDirection: "column", gap: 8 },
+  pasteTA: { fontFamily: "ui-monospace,monospace", fontSize: 11.5, width: "100%", minHeight: 90, padding: 10, border: "1px solid " + c.line, borderRadius: 9, resize: "vertical" },
+  pasteBtn: { fontFamily: "inherit", fontSize: 12.5, fontWeight: 600, cursor: "pointer", alignSelf: "flex-start", padding: "8px 15px", border: "none", borderRadius: 9, background: c.accent, color: "#fff" },
+  loadMsg: { fontSize: 12.5, padding: "9px 13px", background: "#f0f5ff", borderRadius: 8, marginBottom: 8 },
+  card: { background: "#fff", border: "1px solid " + c.line, borderRadius: 14, padding: "24px 22px", marginBottom: 18, position: "relative" },
+  secNo: { position: "absolute", top: 18, right: 22, fontSize: 12, fontWeight: 700, letterSpacing: "0.2em", color: c.line },
+  h2: { fontSize: 18, margin: "0 0 6px" },
+  lead: { color: c.ink2, fontSize: 13.5, margin: "0 0 18px" },
+  row: { display: "grid", gridTemplateColumns: "1fr 1.4fr auto", gap: 12, alignItems: "center", paddingBottom: 12, borderBottom: "1px solid " + c.line, marginBottom: 12 },
+  rowName: { fontSize: 13, fontWeight: 600 },
+  rowBars: { display: "flex", flexDirection: "column", gap: 4 },
+  barLine: { display: "flex", alignItems: "center", gap: 8 },
+  barTag: { fontSize: 10, color: c.ink2, width: 24 },
+  track: { flex: 1, height: 8, background: "#eef1f6", borderRadius: 4, overflow: "hidden" },
+  fill: { height: "100%", borderRadius: 4 },
+  fillOwn: { background: c.own },
+  fillComp: { background: c.comp },
+  barVal: { fontSize: 11, color: c.ink2, width: 32, textAlign: "right" },
+  chip: { fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 999, whiteSpace: "nowrap", textAlign: "center" },
+  chipGap: { background: "#fde8dd", color: "#c2541f" },
+  chipStrong: { background: "#ddf3e8", color: "#157a51" },
+  chipEven: { background: "#eef1f6", color: c.ink2 },
+  insight: { marginTop: 18, padding: "14px 16px", background: "#f0f5ff", border: "1px solid #d6e3ff", borderRadius: 10, fontSize: 13 },
+  theme: { textAlign: "left", background: "#fff", cursor: "pointer", border: "1.5px solid " + c.line, borderRadius: 12, padding: 16, fontFamily: "inherit", position: "relative", width: "100%" },
+  themeOn: { borderColor: c.accent, background: "#f7faff", boxShadow: "0 0 0 3px rgba(31,111,235,0.12)" },
+  themeCustom: { borderStyle: "dashed" },
+  themeTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 },
+  themeGap: { fontSize: 11, fontWeight: 700, color: "#c2541f", background: "#fde8dd", padding: "3px 9px", borderRadius: 999 },
+  themeTitle: { fontSize: 16, fontWeight: 700, marginBottom: 6 },
+  themeSum: { fontSize: 12.5, color: c.ink2, marginBottom: 10 },
+  themeMeta: { display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11, color: c.ink2 },
+  themeCheck: { fontSize: 11, fontWeight: 700, color: c.accent, marginLeft: "auto" },
+  cfInput: { fontFamily: "inherit", fontSize: 13, width: "100%", padding: "9px 11px", border: "1px solid " + c.line, borderRadius: 8, background: "#fff" },
+  channel: { fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "9px 16px", borderRadius: 999, border: "1.5px solid " + c.line, background: "#fff", color: c.ink },
+  channelOn: { background: c.accent, color: "#fff", borderColor: c.accent },
+  gen: { fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", width: "100%", padding: 14, border: "none", borderRadius: 11, background: c.ink, color: "#fff" },
+  draftBox: { marginTop: 20, border: "1px solid " + c.line, borderRadius: 11, overflow: "hidden" },
+  draftHd: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 15px", background: "#f6f8fb", borderBottom: "1px solid " + c.line, fontSize: 13, fontWeight: 700, gap: 10, flexWrap: "wrap" },
+  copyBtn: { fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, cursor: "pointer", padding: "6px 12px", border: "1px solid " + c.accent, borderRadius: 7, background: c.accent, color: "#fff" },
+  copyBtnOn: { background: "#157a51", borderColor: "#157a51" },
+  openBtn: { fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, padding: "6px 12px", border: "1px solid " + c.line, borderRadius: 7, background: "#fff", color: c.ink, textDecoration: "none", display: "inline-block" },
+  steps: { fontSize: 12, color: "#157a51", background: "#ddf3e8", borderBottom: "1px solid " + c.line, padding: "10px 16px", lineHeight: 1.7 },
+  draftBody: { margin: 0, padding: 18, fontFamily: "inherit", fontSize: 13.5, whiteSpace: "pre-wrap", wordBreak: "break-word", background: "#fff", lineHeight: 1.75, maxHeight: 500, overflowY: "auto" }
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
