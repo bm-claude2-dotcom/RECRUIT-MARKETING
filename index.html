@@ -19,53 +19,56 @@
 const useState = React.useState;
 const useMemo = React.useMemo;
 
+// <<AUTO_ANALYSIS_DATA_START>>
 const DEFAULT_ANALYSIS = {
-  own_count: 12,
-  comp_count: 7,
-  themes: [
-    { name: "誰と働く(社員・カルチャー)", own: 33, comp: 57 },
-    { name: "成長・育成", own: 42, comp: 29 },
-    { name: "入社後リアル(仕事・1日)", own: 8, comp: 57 },
-    { name: "選考・就活", own: 25, comp: 29 },
-    { name: "ビジョン・理念", own: 25, comp: 0 },
-    { name: "事業・専門性", own: 42, comp: 14 },
-    { name: "働き方・制度", own: 17, comp: 0 },
-    { name: "多様性・グローバル", own: 8, comp: 0 }
+  "date": null,
+  "own_count": 12,
+  "comp_count": 7,
+  "themes": [
+    { "name": "誰と働く(社員・カルチャー)", "own": 33, "comp": 57 },
+    { "name": "成長・育成", "own": 42, "comp": 29 },
+    { "name": "入社後リアル(仕事・1日)", "own": 8, "comp": 57 },
+    { "name": "選考・就活", "own": 25, "comp": 29 },
+    { "name": "ビジョン・理念", "own": 25, "comp": 0 },
+    { "name": "事業・専門性", "own": 42, "comp": 14 },
+    { "name": "働き方・制度", "own": 17, "comp": 0 },
+    { "name": "多様性・グローバル", "own": 8, "comp": 0 }
   ],
-  keywords: [["1日", 5], ["社員", 5], ["現場", 4], ["業務", 3], ["スケジュール", 3], ["メンバー", 3], ["チーム", 3], ["配属", 2], ["リアル", 2], ["内定", 2], ["選考", 2], ["案件", 2], ["コンサル", 2], ["カルチャー", 2], ["仲間", 2]],
-  suggestions: [
+  "keywords": [["1日", 5], ["社員", 5], ["現場", 4], ["業務", 3], ["スケジュール", 3], ["メンバー", 3], ["チーム", 3], ["配属", 2], ["リアル", 2], ["内定", 2], ["選考", 2], ["案件", 2], ["コンサル", 2], ["カルチャー", 2], ["仲間", 2]],
+  "suggestions": [
     {
-      id: "theme1",
-      title: "新卒1〜2年目のリアルな1日",
-      gap: "入社後リアル(仕事・1日)",
-      diff: "+49pt",
-      kind: "空白を埋める",
-      summary: "就活生最大の不安『入社後どう働くか』に、若手社員の1日を時系列で見せて応える。",
-      target: "入社後リアル",
-      pillar: "自立したプロフェッショナル(成長過程の可視化)"
+      "id": "theme1",
+      "title": "新卒1〜2年目のリアルな1日",
+      "gap": "入社後リアル(仕事・1日)",
+      "diff": "+49pt",
+      "kind": "空白を埋める",
+      "summary": "就活生最大の不安『入社後どう働くか』に、若手社員の1日を時系列で見せて応える。",
+      "target": "入社後リアル",
+      "pillar": "自立したプロフェッショナル(成長過程の可視化)"
     },
     {
-      id: "theme2",
-      title: "なぜこの人たちと働きたいと思えるのか",
-      gap: "誰と働く(社員・カルチャー)",
-      diff: "+24pt",
-      kind: "空白を埋める",
-      summary: "御社が大切にする「誰と働くか」を、若手社員本人の言葉と具体的なエピソードで証明する。",
-      target: "誰と働く, Win-Win",
-      pillar: "原則と人格/Win-Win"
+      "id": "theme2",
+      "title": "なぜこの人たちと働きたいと思えるのか",
+      "gap": "誰と働く(社員・カルチャー)",
+      "diff": "+24pt",
+      "kind": "空白を埋める",
+      "summary": "御社が大切にする「誰と働くか」を、若手社員本人の言葉と具体的なエピソードで証明する。",
+      "target": "誰と働く, Win-Win",
+      "pillar": "原則と人格/Win-Win"
     },
     {
-      id: "theme3",
-      title: "データの力で、新卒が最前線で成長できる理由",
-      gap: "事業・専門性",
-      diff: "強み活用",
-      kind: "強みを伸ばす",
-      summary: "事業の専門性(データ解析・デジタルマーケティング)を、新卒の成長機会として翻訳して伝える。",
-      target: "成長, ビジョン実現",
-      pillar: "データドリブン/世界基準のプロフェッショナル"
+      "id": "theme3",
+      "title": "データの力で、新卒が最前線で成長できる理由",
+      "gap": "事業・専門性",
+      "diff": "強み活用",
+      "kind": "強みを伸ばす",
+      "summary": "事業の専門性(データ解析・デジタルマーケティング)を、新卒の成長機会として翻訳して伝える。",
+      "target": "成長, ビジョン実現",
+      "pillar": "データドリブン/世界基準のプロフェッショナル"
     }
   ]
 };
+// <<AUTO_ANALYSIS_DATA_END>>
 
 const CHANNELS = [
   { id: "blog", label: "採用ブログ", spec: "2,000-4,000字/見出し構造/丁寧・ストーリー/絵文字なし/SEO意識" },
@@ -119,7 +122,7 @@ function App() {
   const analysis = analysisState[0];
   const setAnalysis = analysisState[1];
 
-  const isRealState = useState(true);
+  const isRealState = useState(!!DEFAULT_ANALYSIS.date);
   const isReal = isRealState[0];
   const setIsReal = isRealState[1];
 
@@ -357,15 +360,15 @@ function App() {
       <header style={s.hd}>
         <div style={s.hdMark}>PRINCIPLE</div>
         <h1 style={s.h1}>採用マーケティング 分析 → 企画 → プロンプト生成</h1>
-        <p style={s.hdSub}>自社 {analysis.own_count}件 / 競合 {analysis.comp_count}件の発信を分析。足りないテーマを見つけ、Claude.ai 等にそのまま貼って使えるプロンプトを生成します。</p>
-        <div style={s.brandNote}>★ 会社情報(MVV・行動規範・会社概要・事業/専門性)はアプリ内に埋め込み済み。プロンプトに自動で反映されます。</div>
+        <p style={s.hdSub}>自社 {analysis.own_count}件 / 競合 {analysis.comp_count}件の発信を分析。{analysis.date ? "(" + analysis.date + " 時点) " : ""}足りないテーマを見つけ、Claude.ai 等にそのまま貼って使えるプロンプトを生成します。</p>
+        <div style={s.brandNote}>★ 会社情報はアプリ内に埋め込み済み。<code>analyze_trends.py</code> を実行するとSlackの最新データが自動で反映されます。</div>
         <div style={s.dataRow}>
-          <span style={Object.assign({}, s.badge, isReal ? s.badgeReal : s.badgeSample)}>{isReal ? "● 実データ(埋め込み済み)" : "○ サンプルデータ"}</span>
-          <button style={s.dataBtn} onClick={function() { setShowLoader(!showLoader); }}>{showLoader ? "閉じる" : "データを更新する"}</button>
+          <span style={Object.assign({}, s.badge, isReal ? s.badgeReal : s.badgeSample)}>{isReal ? "● Slack自動取得済み" + (analysis.date ? " (" + analysis.date + ")" : "") : "○ 初期サンプルデータ（analyze_trends.py 未実行）"}</span>
+          <button style={s.dataBtn} onClick={function() { setShowLoader(!showLoader); }}>{showLoader ? "閉じる" : "手動で上書きする"}</button>
         </div>
         {showLoader && (
           <div style={s.loader}>
-            <p style={s.loaderHelp}><code>analyze_trends.py</code> が出力した <code>data/analysis_data.json</code> を読み込みます。</p>
+            <p style={s.loaderHelp}><code>analyze_trends.py</code> を実行するとこのHTMLが自動更新されます。手動で上書きしたい場合は以下にJSONを貼り付けてください。</p>
             <label style={s.fileBtn}>JSONファイルを選択<input type="file" accept=".json" onChange={loadFromFile} hidden /></label>
             <div style={s.pasteArea}>
               <textarea style={s.pasteTA} placeholder="analysis_data.json の中身をここに貼り付け" value={pasteText} onChange={function(e) { setPasteText(e.target.value); }} />
@@ -522,7 +525,7 @@ function App() {
       </section>
 
       <footer style={{ textAlign: "center", fontSize: 11, color: "#5b6573", marginTop: 28 }}>
-        {isReal ? "実データに基づく分析です。" : "サンプルデータに基づく分析です。"}会社情報はアプリ内に埋め込み(MVV・行動規範・会社概要)。競合の本文は転用していません(テーマ傾向の把握のみ)。
+        {isReal ? "Slackデータに基づく分析" + (analysis.date ? "（" + analysis.date + "）" : "") + "。" : "初期サンプルデータです。analyze_trends.py を実行してください。"}会社情報はアプリ内に埋め込み(MVV・行動規範・会社概要)。競合の本文は転用していません(テーマ傾向の把握のみ)。
       </footer>
     </div>
   );
