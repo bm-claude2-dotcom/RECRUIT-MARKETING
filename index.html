@@ -99,7 +99,7 @@ const BRAND_CONTEXT = [
   "3. チャレンジから学びます",
   "4. 第2領域(緊急ではないが重要なこと)を大切にします",
   "5. 信用残高を大切にします",
-  "6. 率直であります",
+  "6. 率率であります",
   "7. 人を育てます",
   "",
   "【訴求の核】Win-Win(個人と会社の幸せの両立)/原則(Principle)と人格を重視/「何をするかより誰と働くか」/自立したプロフェッショナルへの成長環境/データドリブン/世界基準・多様性。",
@@ -159,6 +159,15 @@ function App() {
   const copied = copiedState[0];
   const setCopied = copiedState[1];
 
+  // 【追加】下書き表示用とコピー用のState
+  const draftState = useState("");
+  const draftText = draftState[0];
+  const setDraftText = draftState[1];
+
+  const draftCopiedState = useState(false);
+  const draftCopied = draftCopiedState[0];
+  const setDraftCopied = draftCopiedState[1];
+
   const THEMES = analysis.suggestions;
   const currentChannel = CHANNELS.find(function(c) { return c.id === selectedChannel; }) || CHANNELS[0];
   const canGenerate = selectedTheme === "custom" ? customTitle.trim().length > 0 : !!selectedTheme;
@@ -180,6 +189,7 @@ function App() {
     setIsReal(true);
     setSelectedTheme(null);
     setPromptText("");
+    setDraftText("");
     const dateStr = obj.date || "日付不明";
     setLoadMsg("✓ 実データを読み込みました(" + dateStr + "・自社" + ownCount + "件/競合" + compCount + "件)");
     setShowLoader(false);
@@ -209,20 +219,21 @@ function App() {
       .sort(function(a, b) { return b.d - a.d; });
   }, [analysis]);
 
-  function buildPrompt() {
-    if (!canGenerate) return;
-    let theme;
+  function getThemeObject() {
     if (selectedTheme === "custom") {
-      theme = {
+      return {
         title: customTitle.trim(),
         summary: customSummary.trim() || "(概要の記載なし。タイトルから方向性を汲んで作成)",
-        target: "(自由入力テーマ)",
+        target: "自由入力",
         pillar: "ブランドのトンマナに準拠"
       };
-    } else {
-      theme = THEMES.find(function(t) { return t.id === selectedTheme; });
     }
+    return THEMES.find(function(t) { return t.id === selectedTheme; });
+  }
 
+  function buildPrompt() {
+    if (!canGenerate) return;
+    const theme = getThemeObject();
     const channel = currentChannel;
     const guides = [];
     if (channel.id === "instagram") guides.push("- キャプション本文＋【画像案】を箇条書きで添える");
@@ -273,6 +284,68 @@ function App() {
       setCopied(true);
       setTimeout(function() { setCopied(false); }, 2000);
     }).catch(function() { setCopied(false); });
+  }
+
+  // 【追加】その場で瞬時に下書きをロジック生成する関数
+  function buildDraft() {
+    if (!canGenerate) return;
+    const theme = getThemeObject();
+    let text = "";
+
+    if (selectedChannel === "x") {
+      text = [
+        "【X（旧Twitter）投稿下書き案】",
+        "①\n「" + theme.title + "」について発信します！\nプリンシプルでは『何をするかより誰と働くか』の精神を大切にしています。新卒から最前線でデータドリブンに挑む若手メンバーのリアルな日常をスレッドでお届けします。👇 #新卒採用 #マーケDX",
+        "②\n今回の企画の狙いは「" + theme.summary + "」です。就活生の皆さんの不安を等身大の事実で解消したい。私たちは、個人と会社の幸せの両立（Win-Win）を本気で目指すプロ集団です。お互いを高め合えるカルチャーがここにあります。",
+        "③\n[要確認: 若手社員の一日のスケジュール（例: 9:30出社、GA4/BigQuery解析、13:00チームミーティング等）]\n各分野のトップスペシャリストがチームを組み、相乗効果で高い成果を出す。これがValue2で掲げる私たちの強みです！",
+        "④\n「自立したプロフェッショナルとして世界基準で考えたい」そんな熱い想いを持った26卒・27卒の仲間を待っています！少しでも気になった方は、プロフのリンクからまずはカジュアルにお話ししましょう！"
+      ].join("\n\n");
+    } else if (selectedChannel === "instagram") {
+      text = [
+        "【Instagram 投稿下書き案】",
+        "■ キャプション本文\nこんにちは！プリンシプル新卒採用担当です。✨\n今回は、就活生のリアルな疑問に答える企画として「" + theme.title + "」をお届けします！\n\n「入社後に実際どんな成長ができるの？」「カルチャーは？」という不安に、誠実・等身大のデータと事実ベースでお答え。当社が誇る『自立したプロフェッショナルがチームとなる環境』の魅力をスワイプしてチェックしてください！\n\n狙い：" + theme.summary + "\n\n#プリンシプル #採用マーケティング #マーケDX #デジタルマーケティング #26卒 #27卒 #就活生と繋がりたい #WinWin #企業カルチャー",
+        "■ 画像スライド構成案（全5枚）\n【1枚目：表紙】デザイン文字で大きく「" + theme.title + "」\n【2枚目：背景】就活生のネタの空白を埋める意図（" + theme.summary + "）\n【3枚目：中身】[要確認: 社員のリアルなコメントや写真、1日の流れを配置]\n【4枚目：強み】GA4・SEO等のトップスペシャリストと働く魅力の紹介\n【5枚目：最後】「まずはカジュアル面談へ！」プロフィールURLへの誘導文言"
+      ].join("\n\n");
+    } else {
+      text = [
+        "【" + currentChannel.label + "向け 草案・構成案】",
+        "タイトル案: " + theme.title,
+        "想定文字数: 約1,500〜2,500字",
+        "",
+        "## 1. はじめに（導入文）",
+        "こんにちは、株式会社プリンシプルの新卒採用マーケティング担当です。就活を進める中で、「入社後に自分が本当に成長できるのか」「どんな人と働くことになるのか」と不安を感じることはありませんか？今回は、そんな皆さんの疑問に等身大でお答えするため、「" + theme.title + "」をテーマに詳しくご紹介します。",
+        "",
+        "## 2. このテーマを企画した背景と狙い",
+        "私たちが日々の発信を分析する中で、" + theme.summary + "という課題が見えてきました。プリンシプルには表面的な成功ではなく「原則」と「人格」を重視し、会社と個人がWin-Winであることを目指す確固たるカルチャー（Value1）があります。そのリアルな空気感を、誇張なく事実ベースでお伝えします。",
+        "",
+        "## 3. 具体的なエピソードと訴求の核（メインパート）",
+        "ここで、今回の訴求軸である『" + theme.pillar + "』に焦点を当てます。ターゲットタグである「" + theme.target + "」に興味を持つ皆さんに向けて、具体的なデータを交えて解説します。",
+        "",
+        "[要確認: ここにテーマに沿った実際の社内取材データ、若手社員の具体的な業務内容、またはインタビューコメントを肉付けしてください。]",
+        "・GA4やBigQuery、Tableauなどの専門性をどう身につけたか",
+        "・書籍執筆・セミナー登壇実績を持つトップスペシャリストの先輩から受けた指導",
+        "・「主体性を発揮する」「チャレンジから学ぶ」という行動規範が活きた瞬間",
+        "",
+        "## 4. 自立したプロフェッショナルとして世界基準を目指すあなたへ（結び）",
+        "プリンシプルは「世界で最も信頼されるマーケティングDXパートナー」となるべく、日々チームで高い成果を追い求めています。考え方や働き方の多様性を尊重するグローバルな環境で、あなたも一緒にWin-Winな未来を描きませんか？",
+        "少しでも共感していただけたなら、ぜひお気軽にカジュアル面談へお越しください！"
+      ].join("\n");
+    }
+
+    setDraftText(text);
+    setDraftCopied(false);
+    setTimeout(function() {
+      const el = document.getElementById("draft-output");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
+
+  function copyDraft() {
+    if (!navigator.clipboard) { setDraftCopied(false); return; }
+    navigator.clipboard.writeText(draftText).then(function() {
+      setDraftCopied(true);
+      setTimeout(function() { setDraftCopied(false); }, 2000);
+    }).catch(function() { setDraftCopied(false); });
   }
 
   const sortedThemes = analysis.themes
@@ -354,7 +427,7 @@ function App() {
           {THEMES.map(function(t) {
             const themeStyle = Object.assign({}, s.theme, selectedTheme === t.id ? s.themeOn : {});
             return (
-              <button key={t.id} style={themeStyle} onClick={function() { setSelectedTheme(t.id); setPromptText(""); }}>
+              <button key={t.id} style={themeStyle} onClick={function() { setSelectedTheme(t.id); setPromptText(""); setDraftText(""); }}>
                 <div style={s.themeTop}>
                   <span style={s.themeGap}>{t.gap}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#5b6573" }}>{t.diff}</span>
@@ -368,7 +441,7 @@ function App() {
           })}
           <div
             style={Object.assign({}, s.theme, s.themeCustom, selectedTheme === "custom" ? s.themeOn : {})}
-            onClick={function() { if (selectedTheme !== "custom") { setSelectedTheme("custom"); setPromptText(""); } }}
+            onClick={function() { if (selectedTheme !== "custom") { setSelectedTheme("custom"); setPromptText(""); setDraftText(""); } }}
           >
             <div style={s.themeTop}>
               <span style={Object.assign({}, s.themeGap, { background: "#ede9fe", color: "#6d3bd4" })}>自分で入力</span>
@@ -390,8 +463,10 @@ function App() {
 
       <section style={Object.assign({}, s.card, { opacity: selectedTheme ? 1 : 0.55 })}>
         <div style={s.secNo}>03</div>
-        <h2 style={s.h2}>媒体を選んでプロンプトを生成</h2>
-        <p style={s.lead}>{selectedTheme ? "投稿する媒体を選び、プロンプトを生成しましょう。生成されたプロンプトを Claude.ai 等にコピー＆ペーストして草案を作ります。" : "先に 02 でテーマを選んでください。"}</p>
+        <h2 style={s.h2}>媒体を選んで下書き・プロンプトを生成</h2>
+        <p style={s.lead}>
+          {selectedTheme ? "投稿する媒体を選んでください。「その場で下書き作成」を押すと画面上に構成案が作られます。" : "先に 02 でテーマを選んでください。"}
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
           {CHANNELS.map(function(ch) {
             const chStyle = Object.assign({}, s.channel, selectedChannel === ch.id ? s.channelOn : {}, { opacity: !selectedTheme ? 0.4 : 1 });
@@ -399,15 +474,40 @@ function App() {
           })}
         </div>
         {selectedTheme && <p style={{ fontSize: 12, color: "#5b6573", marginBottom: 16 }}>{currentChannel.spec}</p>}
-        <button style={Object.assign({}, s.gen, { opacity: !canGenerate ? 0.35 : 1 })} disabled={!canGenerate} onClick={buildPrompt}>
-          ▶ この内容でプロンプトを作成
-        </button>
-        {selectedTheme === "custom" && !customTitle.trim() && <p style={{ fontSize: 12, color: "#c2541f", textAlign: "center", marginTop: 8 }}>テーマ(タイトル)を入力するとプロンプトを作成できます。</p>}
+        
+        {/* ボタンエリア */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <button style={Object.assign({}, s.gen, { opacity: !canGenerate ? 0.35 : 1, background: "#1f6feb" })} disabled={!canGenerate} onClick={buildDraft}>
+            ✨ 1クリックで画面上に【草案・下書き】を作成
+          </button>
+          
+          <button style={Object.assign({}, s.gen, { opacity: !canGenerate ? 0.35 : 1, background: "#334155" })} disabled={!canGenerate} onClick={buildPrompt}>
+            ▶ 外部のAI用【プロンプト】を作成
+          </button>
+        </div>
+
+        {selectedTheme === "custom" && !customTitle.trim() && <p style={{ fontSize: 12, color: "#c2541f", textAlign: "center", marginTop: 8 }}>テーマ(タイトル)を入力すると作成できます。</p>}
+
+        {/* 【追加】画面上での下書き表示出力ブロック */}
+        {draftText && (
+          <div id="draft-output" style={Object.assign({}, s.draftBox, { borderColor: "#1f6feb" })}>
+            <div style={Object.assign({}, s.draftHd, { background: "#f0f5ff" })}>
+              <span>📄 生成された草案・下書き（{currentChannel.label}向け / {draftText.length.toLocaleString()}文字）</span>
+              <button style={Object.assign({}, s.copyBtn, draftCopied ? s.copyBtnOn : {})} onClick={copyDraft}>
+                {draftCopied ? "✓ コピー完了" : "📋 下書きをコピー"}
+              </button>
+            </div>
+            <pre style={s.draftBody}>{draftText}</pre>
+            <p style={{ fontSize: 11.5, color: "#5b6573", padding: "0 18px 16px", margin: 0 }}>
+              ※ 埋め込み済みのブランド事実（MVV等）を適用した骨子です。より具体的な数値や社員エピソード等の [要確認] 箇所を補強してご活用ください。
+            </p>
+          </div>
+        )}
 
         {promptText && (
           <div id="prompt-output" style={s.draftBox}>
             <div style={s.draftHd}>
-              <span>プロンプト({currentChannel.label}向け / {promptText.length.toLocaleString()}文字)</span>
+              <span>🤖 プロンプト({currentChannel.label}向け / {promptText.length.toLocaleString()}文字)</span>
               <div style={{ display: "flex", gap: 8 }}>
                 <button style={Object.assign({}, s.copyBtn, copied ? s.copyBtnOn : {})} onClick={copyPrompt}>{copied ? "✓ コピー完了" : "📋 コピー"}</button>
                 <a style={s.openBtn} href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Claude.aiを開く ↗</a>
@@ -417,7 +517,6 @@ function App() {
               <strong>使い方:</strong> ① 上の「📋 コピー」を押す → ② 「Claude.aiを開く」で新規チャットを開く → ③ そのまま貼り付けて送信 → ④ 出てきた草案を編集・取材で補強
             </div>
             <pre style={s.draftBody}>{promptText}</pre>
-            <p style={{ fontSize: 11.5, color: "#5b6573", padding: "0 18px 16px", margin: 0 }}>※ 生成された草案には [要確認: ◯◯] と書かれた箇所が含まれます。取材・事実確認で補強し、編集校閲担当の承認を経て投稿してください。</p>
           </div>
         )}
       </section>
