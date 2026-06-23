@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>採用SNS 自動ネタ帳 | Principle</title>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #f6f8fb; }
+  body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const useState = React.useState;
+
+// <<AUTO_ANALYSIS_DATA_START>>
+const DEFAULT_ANALYSIS = {
+  "last_updated": null,
+  "slack_status": {
+    "company_messages": 0,
+    "competitor_messages": 0
+  },
+  "recent_events": [
+    {
+      "title": "サンプル：入社3ヶ月メンバーの初勉強会LT登壇",
+      "date": "今週水曜",
+      "summary": "入社して3ヶ月のメンバーが、業務で習得したGA4のデータ分析手法を社内勉強会でLT登壇。先輩社員からの鋭い質問が飛び交い、活発な議論が展開されました。本人も「登壇を通じてより深く理解できた」とコメント。",
+      "source_topic": "デベロッパーchでのスライド共有より",
+      "sns_draft": "入社3ヶ月のメンバーが社内勉強会でLT登壇✨「失敗してもいい、挑戦が成長につながる」という文化が若手の背中を押します。プリンシプルでは自立したプロフェッショナルへの成長を全力でサポート中。 #企業公式中の人 #採用 #Principle"
+    },
+    {
+      "title": "サンプル：26卒内定者との懇親会",
+      "date": "先週金曜",
+      "summary": "26卒内定者を迎えた懇親会を開催。現場社員と内定者が和気あいあいと交流し、「実際の仕事のリアル」を本音で語り合う場となりました。内定者からは「入社が楽しみになった」との声が多数。",
+      "source_topic": "採用チャンネルの報告投稿より",
+      "sns_draft": "26卒の内定者と懇親会を開催🎉 現場社員がリアルな仕事の話を赤裸々に語る場に。「誰と働くか」を大切にしているプリンシプルらしい時間でした。来春一緒に働くのが楽しみです！ #企業公式中の人 #26卒 #Principle #採用"
+    }
+  ],
+  "market_trends": [
+    { "theme": "誰と働く(社員・カルチャー)", "own_pct": 33, "comp_pct": 57, "gap": 24 },
+    { "theme": "成長・育成", "own_pct": 42, "comp_pct": 29, "gap": -13 },
+    { "theme": "入社後リアル(仕事・1日)", "own_pct": 8, "comp_pct": 57, "gap": 49 },
+    { "theme": "選考・就活", "own_pct": 25, "comp_pct": 29, "gap": 4 },
+    { "theme": "ビジョン・理念", "own_pct": 25, "comp_pct": 0, "gap": -25 },
+    { "theme": "事業・専門性", "own_pct": 42, "comp_pct": 14, "gap": -28 },
+    { "theme": "働き方・制度", "own_pct": 17, "comp_pct": 0, "gap": -17 },
+    { "theme": "多様性・グローバル", "own_pct": 8, "comp_pct": 0, "gap": -8 }
+  ]
+};
+// <<AUTO_ANALYSIS_DATA_END>>
+
+function App() {
+  const dataState = useState(DEFAULT_ANALYSIS);
+  const data = dataState[0];
+  const setData = dataState[1];
+
+  const copiedIdxState = useState(null);
+  const copiedIdx = copiedIdxState[0];
+  const setCopiedIdx = copiedIdxState[1];
+
+  const showTrendsState = useState(false);
+  const showTrends = showTrendsState[0];
+  const setShowTrends = showTrendsState[1];
+
+  const showLoaderState = useState(false);
+  const showLoader = showLoaderState[0];
+  const setShowLoader = showLoaderState[1];
+
+  const pasteTextState = useState("");
+  const pasteText = pasteTextState[0];
+  const setPasteText = pasteTextState[1];
+
+  const loadMsgState = useState("");
+  const loadMsg = loadMsgState[0];
+  const setLoadMsg = loadMsgState[1];
+
+  const hasRealData = !!data.last_updated;
+  const events = data.recent_events || [];
+  const trends = (data.market_trends || []).slice().sort(function(a, b) { return (b.gap || 0) - (a.gap || 0); });
+  const status = data.slack_status || {};
+
+  function copyDraft(text, idx) {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(text || "").then(function() {
+      setCopiedIdx(idx);
+      setTimeout(function() { setCopiedIdx(null); }, 2000);
+    });
+  }
+
+  function applyData(obj) {
+    if (!obj || !Array.isArray(obj.recent_events)) {
+      setLoadMsg("⚠ 形式が違います（recent_events 配列が見当たりません）");
+      return;
+    }
+    setData(obj);
+    setLoadMsg("✓ データを反映しました（" + (obj.last_updated || "日付不明") + "）");
+    setShowLoader(false);
+    setPasteText("");
+  }
+
+  function loadFromPaste() {
+    try { applyData(JSON.parse(pasteText)); }
+    catch(e) { setLoadMsg("⚠ JSONエラー: " + e.message); }
+  }
+
+  function loadFromFile(ev) {
+    var file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function() {
+      try { applyData(JSON.parse(reader.result)); }
+      catch(e) { setLoadMsg("⚠ ファイルエラー: " + e.message); }
+    };
+    reader.readAsText(file);
+  }
+
+  return (
+    <div style={s.wrap}>
+
+      {/* ─── ヘッダー ─────────────────────────────────── */}
+      <header style={s.hd}>
+        <div style={s.hdMark}>PRINCIPLE</div>
+        <h1 style={s.h1}>採用SNS 自動ネタ帳</h1>
+        <p style={s.hdSub}>Slackの社内活動から採用SNS投稿ネタを自動生成。コピーしてそのまま投稿できます。</p>
+
+        <div style={s.statusBar}>
+          <span style={Object.assign({}, s.badge, hasRealData ? s.badgeReal : s.badgeSample)}>
+            {hasRealData ? "● Slack自動取得済み" : "○ 初期サンプル（analyze_trends.py 未実行）"}
+          </span>
+          {hasRealData && (
+            <span style={s.statusMeta}>最終更新: {data.last_updated}</span>
+          )}
+          {(status.company_messages > 0 || status.competitor_messages > 0) && (
+            <span style={s.statusMeta}>
+              自社 {status.company_messages}件 / 参照 {status.competitor_messages}件
+            </span>
+          )}
+        </div>
+
+        <div style={s.brandNote}>
+          ★ <code style={s.inlineCode}>analyze_trends.py</code> を実行するとSlackの最新データがこのHTMLに自動で書き込まれます
+        </div>
+
+        <div style={s.dataRow}>
+          <button style={s.dataBtn} onClick={function() { setShowLoader(!showLoader); }}>
+            {showLoader ? "閉じる" : "手動でデータ更新"}
+          </button>
+        </div>
+
+        {showLoader && (
+          <div style={s.loader}>
+            <p style={s.loaderHelp}>analyze_trends.py の出力JSONを貼り付けるか、ファイルを選択してください。</p>
+            <label style={s.fileBtn}>
+              JSONファイルを選択
+              <input type="file" accept=".json" onChange={loadFromFile} hidden />
+            </label>
+            <div style={s.pasteArea}>
+              <textarea
+                style={s.pasteTA}
+                placeholder="JSONをここに貼り付け"
+                value={pasteText}
+                onChange={function(e) { setPasteText(e.target.value); }}
+              />
+              <button
+                style={Object.assign({}, s.pasteBtn, { opacity: pasteText.trim() ? 1 : 0.4 })}
+                onClick={loadFromPaste}
+                disabled={!pasteText.trim()}
+              >
+                貼り付けたJSONを反映
+              </button>
+            </div>
+          </div>
+        )}
+        {loadMsg && <div style={s.loadMsg}>{loadMsg}</div>}
+      </header>
+
+      {/* ─── 直近イベント & SNS投稿案 ─────────────────── */}
+      <section>
+        <div style={s.sectionHd}>
+          <h2 style={s.h2}>直近の社内イベント &amp; SNS投稿案</h2>
+          <span style={s.countBadge}>{events.length}件</span>
+        </div>
+
+        {events.length === 0 && (
+          <div style={s.emptyState}>
+            イベントが見つかりません。<code style={s.inlineCode}>analyze_trends.py</code> を実行してください。
+          </div>
+        )}
+
+        {events.map(function(ev, i) {
+          var draft = ev.sns_draft || "";
+          var charLen = draft.length;
+          var charColor = charLen > 160 ? "#c2541f" : charLen > 130 ? "#9a6700" : c.ink2;
+          return (
+            <div key={i} style={s.eventCard}>
+              <div style={s.eventHeader}>
+                <div style={s.eventTitle}>{ev.title}</div>
+                <span style={s.dateBadge}>{ev.date}</span>
+              </div>
+
+              <p style={s.eventSummary}>{ev.summary}</p>
+
+              {ev.source_topic && (
+                <div style={s.sourceRow}>
+                  <span style={s.sourceIcon}>💬</span>
+                  <span style={s.sourceText}>{ev.source_topic}</span>
+                </div>
+              )}
+
+              <div style={s.snsDraftBox}>
+                <div style={s.snsDraftHeader}>
+                  <span style={s.snsDraftLabel}>SNS 投稿案</span>
+                  <div style={s.snsTagRow}>
+                    <span style={s.snsTag}>X</span>
+                    <span style={s.snsTag}>LinkedIn</span>
+                  </div>
+                </div>
+                <div style={s.snsDraftText}>{draft}</div>
+                <div style={s.snsFooter}>
+                  <span style={Object.assign({}, s.charCount, { color: charColor })}>
+                    {charLen}文字{charLen > 160 ? " ⚠ 長め" : charLen > 140 ? " △" : " ✓"}
+                  </span>
+                  <button
+                    style={Object.assign({}, s.copyBtn, copiedIdx === i ? s.copyBtnOn : {})}
+                    onClick={function() { copyDraft(draft, i); }}
+                  >
+                    {copiedIdx === i ? "✓ コピー完了" : "📋 コピー"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
+      {/* ─── 市場トレンド（折りたたみ） ───────────────── */}
+      <section style={s.trendsCard}>
+        <button style={s.trendsToggle} onClick={function() { setShowTrends(!showTrends); }}>
+          <span>市場トレンド分析（採用テーマ別 自社 vs 競合）</span>
+          <span style={s.trendsArrow}>{showTrends ? "▲ 閉じる" : "▼ 展開"}</span>
+        </button>
+
+        {showTrends && (
+          <div style={s.trendsBody}>
+            <p style={s.trendsLead}>各テーマに言及したメッセージの割合。差分が大きいテーマが発信の空白です。</p>
+            {trends.length === 0 && (
+              <p style={{ color: c.ink2, fontSize: 13 }}>データがありません。analyze_trends.py を実行してください。</p>
+            )}
+            {trends.map(function(t, i) {
+              var gap = t.gap || 0;
+              var chipStyle = gap >= 20 ? s.chipGap : gap <= -20 ? s.chipStrong : s.chipEven;
+              var isLast = i === trends.length - 1;
+              return (
+                <div key={t.theme} style={Object.assign({}, s.trendRow, isLast ? { borderBottom: "none", marginBottom: 0, paddingBottom: 0 } : {})}>
+                  <div style={s.trendName}>{t.theme}</div>
+                  <div style={s.trendBars}>
+                    <div style={s.barLine}>
+                      <span style={s.barTag}>自社</span>
+                      <div style={s.track}><div style={Object.assign({}, s.fill, s.fillOwn, { width: (t.own_pct || 0) + "%" })} /></div>
+                      <span style={s.barVal}>{t.own_pct || 0}%</span>
+                    </div>
+                    <div style={s.barLine}>
+                      <span style={s.barTag}>競合</span>
+                      <div style={s.track}><div style={Object.assign({}, s.fill, s.fillComp, { width: (t.comp_pct || 0) + "%" })} /></div>
+                      <span style={s.barVal}>{t.comp_pct || 0}%</span>
+                    </div>
+                  </div>
+                  <span style={Object.assign({}, s.gapChip, chipStyle)}>
+                    {gap >= 0 ? "+" : ""}{gap}pt
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <footer style={s.footer}>
+        {hasRealData
+          ? "Slackデータ自動取得（" + data.last_updated + "）。"
+          : "初期サンプルデータです。analyze_trends.py を実行してください。"
+        }
+        競合メッセージは転用していません（テーマ傾向の把握のみ）。
+      </footer>
+    </div>
+  );
+}
+
+const c = {
+  ink: "#14181f", ink2: "#5b6573", line: "#e3e7ee", bg: "#f6f8fb",
+  own: "#1f6feb", comp: "#e8743b", accent: "#1f6feb"
+};
+const s = {
+  wrap: { fontFamily: '-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif', background: c.bg, color: c.ink, maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px", lineHeight: 1.6, minHeight: "100vh" },
+
+  hd: { marginBottom: 28 },
+  hdMark: { fontSize: 11, letterSpacing: "0.28em", fontWeight: 700, color: c.accent, marginBottom: 10 },
+  h1: { fontSize: 26, margin: "0 0 8px", letterSpacing: "-0.01em" },
+  hdSub: { color: c.ink2, fontSize: 14, margin: "0 0 14px" },
+
+  statusBar: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 },
+  badge: { fontSize: 11, fontWeight: 700, padding: "4px 11px", borderRadius: 999 },
+  badgeSample: { background: "#fff4e0", color: "#9a6700" },
+  badgeReal: { background: "#ddf3e8", color: "#157a51" },
+  statusMeta: { fontSize: 12, color: c.ink2 },
+
+  brandNote: { fontSize: 12, color: "#157a51", background: "#ddf3e8", border: "1px solid #b8e6d0", borderRadius: 8, padding: "8px 12px", marginBottom: 12 },
+  inlineCode: { fontFamily: "ui-monospace,monospace", fontSize: 11.5 },
+  dataRow: { display: "flex", gap: 8, marginBottom: 4 },
+  dataBtn: { fontFamily: "inherit", fontSize: 12, cursor: "pointer", padding: "5px 13px", border: "1px solid " + c.line, borderRadius: 8, background: "#fff", color: c.ink },
+
+  loader: { margin: "8px 0 12px", padding: 16, background: "#fff", border: "1px solid " + c.line, borderRadius: 11 },
+  loaderHelp: { fontSize: 12.5, color: c.ink2, margin: "0 0 12px" },
+  fileBtn: { display: "inline-block", fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: "8px 15px", border: "1.5px solid " + c.accent, color: c.accent, borderRadius: 9, marginBottom: 12 },
+  pasteArea: { display: "flex", flexDirection: "column", gap: 8 },
+  pasteTA: { fontFamily: "ui-monospace,monospace", fontSize: 11.5, width: "100%", minHeight: 80, padding: 10, border: "1px solid " + c.line, borderRadius: 9, resize: "vertical" },
+  pasteBtn: { fontFamily: "inherit", fontSize: 12.5, fontWeight: 600, cursor: "pointer", alignSelf: "flex-start", padding: "8px 15px", border: "none", borderRadius: 9, background: c.accent, color: "#fff" },
+  loadMsg: { fontSize: 12.5, padding: "9px 13px", background: "#f0f5ff", borderRadius: 8, marginBottom: 8 },
+
+  sectionHd: { display: "flex", alignItems: "center", gap: 10, marginBottom: 16 },
+  h2: { fontSize: 18, margin: 0 },
+  countBadge: { fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: c.accent, color: "#fff" },
+
+  emptyState: { padding: "32px 20px", textAlign: "center", color: c.ink2, background: "#fff", border: "1px dashed " + c.line, borderRadius: 12, fontSize: 13.5, marginBottom: 16 },
+
+  eventCard: { background: "#fff", border: "1px solid " + c.line, borderRadius: 14, marginBottom: 16, overflow: "hidden" },
+  eventHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, padding: "18px 20px 10px" },
+  eventTitle: { fontSize: 16, fontWeight: 700, flex: 1, lineHeight: 1.4 },
+  dateBadge: { fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, background: "#f0f5ff", color: c.accent, whiteSpace: "nowrap", flexShrink: 0, marginTop: 2 },
+  eventSummary: { fontSize: 13.5, color: c.ink, lineHeight: 1.75, margin: 0, padding: "0 20px 12px" },
+  sourceRow: { display: "flex", alignItems: "flex-start", gap: 6, padding: "0 20px 16px" },
+  sourceIcon: { fontSize: 13, flexShrink: 0, marginTop: 1 },
+  sourceText: { fontSize: 12, color: c.ink2, lineHeight: 1.5 },
+
+  snsDraftBox: { borderTop: "1px solid " + c.line, background: "#f8fafc" },
+  snsDraftHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px 6px" },
+  snsDraftLabel: { fontSize: 10.5, fontWeight: 700, letterSpacing: "0.12em", color: c.accent, textTransform: "uppercase" },
+  snsTagRow: { display: "flex", gap: 6 },
+  snsTag: { fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: "#eef1f6", color: c.ink2 },
+  snsDraftText: { padding: "2px 20px 16px", fontSize: 14.5, lineHeight: 1.8, whiteSpace: "pre-wrap", wordBreak: "break-all", color: c.ink },
+  snsFooter: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px 14px", borderTop: "1px solid " + c.line },
+  charCount: { fontSize: 12, fontWeight: 600 },
+  copyBtn: { fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "8px 20px", border: "1.5px solid " + c.accent, borderRadius: 8, background: c.accent, color: "#fff" },
+  copyBtnOn: { background: "#157a51", borderColor: "#157a51" },
+
+  trendsCard: { background: "#fff", border: "1px solid " + c.line, borderRadius: 14, overflow: "hidden", marginBottom: 18 },
+  trendsToggle: { fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", width: "100%", padding: "16px 20px", border: "none", background: "none", textAlign: "left", color: c.ink, display: "flex", justifyContent: "space-between", alignItems: "center" },
+  trendsArrow: { fontSize: 12, color: c.ink2 },
+  trendsBody: { padding: "0 20px 20px", borderTop: "1px solid " + c.line },
+  trendsLead: { fontSize: 13, color: c.ink2, margin: "14px 0 16px" },
+  trendRow: { display: "grid", gridTemplateColumns: "1fr 1.6fr auto", gap: 12, alignItems: "center", paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid " + c.line },
+  trendName: { fontSize: 12.5, fontWeight: 600 },
+  trendBars: { display: "flex", flexDirection: "column", gap: 4 },
+  barLine: { display: "flex", alignItems: "center", gap: 8 },
+  barTag: { fontSize: 10, color: c.ink2, width: 24 },
+  track: { flex: 1, height: 7, background: "#eef1f6", borderRadius: 4, overflow: "hidden" },
+  fill: { height: "100%", borderRadius: 4 },
+  fillOwn: { background: c.own },
+  fillComp: { background: c.comp },
+  barVal: { fontSize: 11, color: c.ink2, width: 30, textAlign: "right" },
+  gapChip: { fontSize: 10, fontWeight: 700, padding: "3px 7px", borderRadius: 999, whiteSpace: "nowrap", textAlign: "center" },
+  chipGap: { background: "#fde8dd", color: "#c2541f" },
+  chipStrong: { background: "#ddf3e8", color: "#157a51" },
+  chipEven: { background: "#eef1f6", color: c.ink2 },
+
+  footer: { textAlign: "center", fontSize: 11, color: c.ink2, marginTop: 28 }
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

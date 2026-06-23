@@ -2,7 +2,7 @@
 """
 analyze_trends.py
 
-Slack の2チャンネルからメッセージを取得し、Gemini で採用テーマ分析を行い、
+Slack の2チャンネルからメッセージを取得し、Gemini で社内イベントを抽出・SNS投稿案を生成し、
 prompt_generator.html の DEFAULT_ANALYSIS を自動書き換えする。
 
 初回セットアップ:
@@ -39,76 +39,66 @@ DAYS_BACK       = 7
 GEMINI_MODEL    = "gemini-2.5-flash"
 HTML_PATH       = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompt_generator.html")
 
-THEME_LIST = [
-    "誰と働く(社員・カルチャー)",
-    "成長・育成",
-    "入社後リアル(仕事・1日)",
-    "選考・就活",
-    "ビジョン・理念",
-    "事業・専門性",
-    "働き方・制度",
-    "多様性・グローバル",
-]
-
 ANALYSIS_PROMPT = """\
-あなたは採用マーケティングの専門家です。
-以下の2つのSlackチャンネルのメッセージを分析し、指定のJSON形式のみを返してください（説明文・コードブロック記号は不要）。
+あなたは株式会社プリンシプル（Principle Co., Ltd.）の採用マーケティング専門家です。
+以下のSlackメッセージを分析し、JSONのみを返してください（コードブロック・説明文は不要）。
 
-## チャンネルA（自社：26卒メンバーチャンネル） - {own_count}件
+【プリンシプル会社情報（SNS文章生成に使用）】
+- 事業: データ解析を軸としたデジタルマーケティング。GA4・GTM・BigQuery・SEO・Web広告など
+- Mission: データとアクションをつなぎ、よりよい世界を実現します
+- Value: 自立したプロフェッショナル / Win-Win / 世界基準・多様性
+- ブランドトーン: 誠実・等身大・データドリブン・煽らない・上から目線にしない
+
+## 自社Slackメッセージ（26卒メンバーチャンネル） - {company_messages}件
+実行日時: {last_updated}（過去{days_back}日分）
+
 {own_text}
 
-## チャンネルB（競合参照：ClaudeCodeコンテストチャンネル） - {comp_count}件
+## 参照Slackメッセージ（ClaudeCodeコンテストチャンネル） - {competitor_messages}件
+
 {comp_text}
 
-## 分析タスク
-1. 各チャンネルのメッセージを以下の採用テーマに分類し、各テーマに言及したメッセージの割合(%)を算出
-   テーマ: {themes}
+## タスク1: 直近の社内イベント抽出（最重要タスク）
+過去{days_back}日以内に実施・報告されたイベントを血眼になって見つけ出す。
+対象: 勉強会・懇親会・全社会議・プロジェクトリリース・部活動・歓迎会・社内発表会など。
+最低1件・最大5件を抽出すること。
+明確なイベント記述がない場合も、メッセージのトーン・話題・言及内容から推測して必ず1件以上出力すること。
 
-2. 頻出キーワードTOP15を抽出（ストップワード除外・意味単位で）
+## タスク2: イベントごとのSNS投稿案（採用マーケティング目的）
+各イベントに対して、X（旧Twitter）/LinkedIn にそのまま投稿できる文章を生成。
+【必須条件】
+- 140文字程度（前後15文字は許容）
+- 社内の熱量・カルチャー・若手の活躍・技術へのこだわりが伝わる文脈にする
+- 単なる告知ではなく、共感・拡散される文章にする
+- ハッシュタグ（#企業公式中の人 #採用 #Principle など）を必ず文末に含める
+- プリンシプルのMVV・ブランドトーン（誠実・等身大）に合わせる
 
-3. 差分分析から採用コンテンツ企画3案を提案
-   - 競合% − 自社% が大きいテーマ → "空白を埋める" 提案
-   - 自社が強いテーマ → "強みを伸ばす" 提案
+## タスク3: 採用テーマ別の市場トレンド分析
+自社 vs 競合のメッセージを以下のテーマで比較分類し、各テーマの言及割合(%)を算出:
+誰と働く(社員・カルチャー) / 成長・育成 / 入社後リアル(仕事・1日) / 選考・就活 / ビジョン・理念 / 事業・専門性 / 働き方・制度 / 多様性・グローバル
 
-## 出力（JSONのみ）
+## 出力JSON（このフォーマットを厳守。他のテキストは一切出力しない）
 {{
-  "own_count": {own_count},
-  "comp_count": {comp_count},
-  "date": "{date}",
-  "themes": [
-    {{"name": "テーマ名", "own": 自社%, "comp": 競合%}}
+  "last_updated": "{last_updated}",
+  "slack_status": {{
+    "company_messages": {company_messages},
+    "competitor_messages": {competitor_messages}
+  }},
+  "recent_events": [
+    {{
+      "title": "イベント名（具体的に。例: 入社3ヶ月メンバーの初LT登壇）",
+      "date": "開催時期（例: 今週水曜、昨日、今週など）",
+      "summary": "Slackから読み取ったイベントの概要・社内の盛り上がり（2〜3文で具体的に）",
+      "source_topic": "元になったSlack会話の文脈（例: デベロッパーchでのスライド共有より）",
+      "sns_draft": "X/LinkedIn投稿文（140文字程度・ハッシュタグ込み・改行なし）"
+    }}
   ],
-  "keywords": [["キーワード", 件数]],
-  "suggestions": [
+  "market_trends": [
     {{
-      "id": "theme1",
-      "title": "企画タイトル",
-      "gap": "関連テーマ名",
-      "diff": "+XXpt",
-      "kind": "空白を埋める",
-      "summary": "企画の狙いを1文で",
-      "target": "訴求タグ",
-      "pillar": "MVV/価値軸"
-    }},
-    {{
-      "id": "theme2",
-      "title": "企画タイトル",
-      "gap": "関連テーマ名",
-      "diff": "+XXpt",
-      "kind": "空白を埋める",
-      "summary": "企画の狙いを1文で",
-      "target": "訴求タグ",
-      "pillar": "MVV/価値軸"
-    }},
-    {{
-      "id": "theme3",
-      "title": "企画タイトル",
-      "gap": "関連テーマ名",
-      "diff": "強み活用",
-      "kind": "強みを伸ばす",
-      "summary": "企画の狙いを1文で",
-      "target": "訴求タグ",
-      "pillar": "MVV/価値軸"
+      "theme": "テーマ名",
+      "own_pct": 自社言及割合(整数),
+      "comp_pct": 競合言及割合(整数),
+      "gap": 競合%-自社%(整数)
     }}
   ]
 }}
@@ -137,38 +127,46 @@ def fetch_messages(client: WebClient, channel_id: str, days_back: int) -> list:
 
 
 def messages_to_text(messages: list, max_msgs: int = 300) -> str:
-    return "\n---\n".join(m["text"] for m in messages[:max_msgs])
+    lines = []
+    for m in messages[:max_msgs]:
+        ts = m.get("ts", "")
+        text = m.get("text", "").strip()
+        if text:
+            lines.append(f"[{ts}] {text}")
+    return "\n---\n".join(lines)
 
 
 def call_gemini(client, prompt: str) -> dict:
     resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     raw = resp.text.strip()
+    # マークダウンコードブロックを除去
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
+    # 最外の {...} を抽出
     m = re.search(r"\{[\s\S]*\}", raw)
     if not m:
         raise ValueError(f"Gemini レスポンスからJSONを抽出できませんでした:\n{raw[:500]}")
     return json.loads(m.group())
 
 
-def update_html(html_path: str, analysis: dict) -> None:
+def update_html(html_path: str, data: dict) -> None:
     """prompt_generator.html の DEFAULT_ANALYSIS をマーカー間で置換する"""
     with open(html_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    new_json = json.dumps(analysis, ensure_ascii=False, indent=2)
+    new_json = json.dumps(data, ensure_ascii=False, indent=2)
     new_block = (
         "// <<AUTO_ANALYSIS_DATA_START>>\n"
         f"const DEFAULT_ANALYSIS = {new_json};\n"
         "// <<AUTO_ANALYSIS_DATA_END>>"
     )
 
-    if "// <<AUTO_ANALYSIS_DATA_START>>" in content:
-        pattern = r"// <<AUTO_ANALYSIS_DATA_START>>[\s\S]*?// <<AUTO_ANALYSIS_DATA_END>>"
-        new_content = re.sub(pattern, new_block, content, count=1)
-    else:
+    if "// <<AUTO_ANALYSIS_DATA_START>>" not in content:
         print("⚠ マーカーが見つかりません。prompt_generator.html を確認してください。")
         return
+
+    pattern = r"// <<AUTO_ANALYSIS_DATA_START>>[\s\S]*?// <<AUTO_ANALYSIS_DATA_END>>"
+    new_content = re.sub(pattern, new_block, content, count=1)
 
     if new_content == content:
         print("⚠ DEFAULT_ANALYSIS の置換が行われませんでした。")
@@ -187,29 +185,32 @@ def main():
     if not gemini_key:
         raise SystemExit("GEMINI_API_KEY が未設定です（.env または環境変数を確認）")
 
+    # 1. Slack メッセージ取得
     print(f"Slack チャンネルからメッセージ取得中（過去{DAYS_BACK}日）...")
     slack = WebClient(token=slack_token)
     own_msgs  = fetch_messages(slack, OWN_CHANNEL_ID,  DAYS_BACK)
     comp_msgs = fetch_messages(slack, COMP_CHANNEL_ID, DAYS_BACK)
-    print(f"  自社: {len(own_msgs)}件  競合: {len(comp_msgs)}件")
+    print(f"  自社: {len(own_msgs)}件  参照: {len(comp_msgs)}件")
 
-    print("Gemini API で分析中...")
+    # 2. Gemini で分析・生成
+    print("Gemini API で分析・SNS投稿案を生成中...")
     gemini_client = genai.Client(api_key=gemini_key)
-    today = datetime.now().strftime("%Y-%m-%d")
+    last_updated = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     prompt = ANALYSIS_PROMPT.format(
-        own_count=len(own_msgs),
-        comp_count=len(comp_msgs),
+        company_messages=len(own_msgs),
+        competitor_messages=len(comp_msgs),
         own_text=messages_to_text(own_msgs)  or "(メッセージなし)",
         comp_text=messages_to_text(comp_msgs) or "(メッセージなし)",
-        themes="、".join(THEME_LIST),
-        date=today,
+        last_updated=last_updated,
+        days_back=DAYS_BACK,
     )
-    analysis = call_gemini(gemini_client, prompt)
-    analysis["date"] = today
+    data = call_gemini(gemini_client, prompt)
+    data["last_updated"] = last_updated
 
+    # 3. HTML 更新
     print("HTML を更新中...")
-    update_html(HTML_PATH, analysis)
+    update_html(HTML_PATH, data)
     print("完了！ブラウザで prompt_generator.html を開いて確認してください。")
 
 
