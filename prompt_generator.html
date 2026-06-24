@@ -1,558 +1,440 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>採用コンテンツ ライブ生成 | Principle</title>
-<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
-<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-<style>
-  html, body { margin: 0; padding: 0; background: #f0f4f8; }
-  body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; }
-  *, *::before, *::after { box-sizing: border-box; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
-  .spinner { display: inline-block; width: 18px; height: 18px; border: 2.5px solid #dde3ea; border-top-color: #1f6feb; border-radius: 50%; animation: spin 0.75s linear infinite; vertical-align: middle; }
-  .cursor  { display: inline-block; width: 2px; height: 1.05em; background: #1f6feb; margin-left: 2px; vertical-align: text-bottom; animation: blink 0.8s step-end infinite; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>採用コンテンツ 生成ノート | PRINCIPLE</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      background: #f3f4f6;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+    #root { max-width: 1000px; margin: 0 auto; padding: 24px 16px 64px; }
+  </style>
 </head>
 <body>
 <div id="root"></div>
-
 <script type="text/babel" data-presets="react">
-const useState = React.useState;
-const useRef   = React.useRef;
+var useState = React.useState;
+var useRef   = React.useRef;
 
-/* ─── 定数 ──────────────────────────────────────────────────── */
-const STORAGE_KEY   = "principle_gemini_key";
-const SLACK_CACHE   = "principle_slack_cache";
-const GEMINI_BASE   = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash";
-
-const COMPANY_CTX = `【株式会社プリンシプル（Principle Co.,Ltd.）】
-・事業: データ解析を軸としたデジタルマーケティング（GA4・GTM・BigQuery・SEO・Web広告など）
-・Mission: データとアクションをつなぎ、よりよい世界を実現します
-・Vision: 世界で最も信頼されるマーケティングDXパートナー
-・Value: 自立したプロフェッショナル / Win-Win / 世界基準・多様性
-・従業員数: 約100名、東京都千代田区
-・ターゲット: 新卒・大学3-4年生。「誰と働くか」「成長できるか」「入社後のリアル」「ビジョンが叶うか」
-・トンマナ: 誠実・等身大・データドリブン。煽らない・誇張しない。`;
-
-/* ─── Gemini API ─────────────────────────────────────────────── */
-async function callGemini(apiKey, prompt) {
-  var res = await fetch(GEMINI_BASE + ":generateContent?key=" + apiKey, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 2048 }
-    })
-  });
-  if (!res.ok) {
-    var err = await res.json().catch(function() { return {}; });
-    throw new Error(err.error ? err.error.message : "HTTP " + res.status);
-  }
-  var json = await res.json();
-  return json.candidates[0].content.parts[0].text;
-}
-
-async function streamGemini(apiKey, prompt, onChunk, signal) {
-  var res = await fetch(GEMINI_BASE + ":streamGenerateContent?alt=sse&key=" + apiKey, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.9, maxOutputTokens: 1024 }
-    }),
-    signal: signal
-  });
-  if (!res.ok) {
-    var err = await res.json().catch(function() { return {}; });
-    throw new Error(err.error ? err.error.message : "HTTP " + res.status);
-  }
-  var reader  = res.body.getReader();
-  var decoder = new TextDecoder();
-  var buf = "";
-  while (true) {
-    var readResult = await reader.read();
-    if (readResult.done) break;
-    buf += decoder.decode(readResult.value, { stream: true });
-    var lines = buf.split("\n");
-    buf = lines.pop() || "";
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      if (line.indexOf("data: ") === 0) {
-        var raw = line.slice(6).trim();
-        if (raw === "[DONE]") continue;
-        try {
-          var chunk = JSON.parse(raw);
-          var text = chunk.candidates &&
-                     chunk.candidates[0] &&
-                     chunk.candidates[0].content &&
-                     chunk.candidates[0].content.parts &&
-                     chunk.candidates[0].content.parts[0].text || "";
-          if (text) onChunk(text);
-        } catch(_) {}
-      }
+// <<AUTO_ANALYSIS_DATA_START>>
+const DEFAULT_ANALYSIS = {
+  "last_updated": null,
+  "slack_status": {
+    "company_messages": 0,
+    "competitor_messages": 0
+  },
+  "items": [
+    {
+      "id": 1,
+      "title": "入社3ヶ月で初登壇",
+      "hook": "若手が安心して挑戦できる文化を証明する等身大エピソード",
+      "category": "成長",
+      "content": "入社してわずか3ヶ月、まだ右も左もわからない時期に社内勉強会で登壇したメンバーがいます。GA4の分析手法を発表すると、先輩社員から鋭い質問と温かいフィードバックが飛び交いました。「失敗を恐れず挑戦できる」——それがプリンシプルの文化。トップダウンではなく、一人ひとりが自分の成長スピードで進める環境です。\n\n#プリンシプル #新卒採用 #成長できる会社 #マーケティング"
+    },
+    {
+      "id": 2,
+      "title": "データが変える意思決定",
+      "hook": "GA4やBigQueryを日常的に使う職場環境を具体的に伝える",
+      "category": "技術",
+      "content": "「データドリブン」という言葉は広告でよく見るけれど、実際どんな場面で使うの？プリンシプルでは、Google Analytics 4やBigQueryを日常的に扱いながら、クライアントの課題解決に取り組んでいます。直感ではなく数字で説得する——その積み重ねが、自分自身の論理思考力を確実に鍛えます。\n\n#GA4 #データ分析 #プリンシプル #デジタルマーケティング #新卒採用"
+    },
+    {
+      "id": 3,
+      "title": "月1回の全社勉強会",
+      "hook": "学ぶ文化が根付いた職場を自然体で伝えるカルチャーネタ",
+      "category": "カルチャー",
+      "content": "プリンシプルでは月に一度、全社員が集まる勉強会を開催しています。テーマは最新のSEOアップデートから、AI活用の実例、はたまたメンバーの副業・趣味まで多岐にわたります。「業務時間内に学んでいい」という雰囲気が自然に根付いていて、入社1年目から発表の機会があります。好奇心があれば、どんどん吸収できる環境です。\n\n#プリンシプル #学習文化 #勉強会 #新卒採用"
+    },
+    {
+      "id": 4,
+      "title": "2年目でリーダー就任",
+      "hook": "若手に早期から裁量が与えられるリアルなキャリアパス",
+      "category": "リアル",
+      "content": "入社2年目でプロジェクトリーダーに就任したメンバーがいます。「まだ自信がないのに任された」と振り返りつつも、「やるしかない状況が一番成長できた」と話してくれました。プリンシプルでは年次より実力・意欲が評価される文化があり、若いうちから本番の経験を積める点が魅力です。もちろん、先輩のサポートも手厚い。\n\n#プリンシプル #キャリア #成長 #新卒採用 #マーケティング就職"
+    },
+    {
+      "id": 5,
+      "title": "1on1が変えたキャリア観",
+      "hook": "上司との対話を通じた心理的安全性・サポート体制の紹介",
+      "category": "カルチャー",
+      "content": "週1回の1on1が、私のキャリア観を変えました。「次どんなことに挑戦したいですか？」上司から毎回聞かれるこの言葉で、漠然としていた将来像が具体的になっていきました。評価のための面談ではなく、一緒に考えるための時間——そんな関係性を大切にしているのがプリンシプルです。\n\n#プリンシプル #1on1 #心理的安全性 #新卒採用 #働き方"
+    },
+    {
+      "id": 6,
+      "title": "文系出身でもデータの世界へ",
+      "hook": "文系・理系問わず活躍できるという間口の広さを伝える",
+      "category": "働く人",
+      "content": "文学部出身の私が、なぜデータマーケティングの会社に？と驚かれることがあります。でもプリンシプルには、文系・理系・外語系・芸術系と多様なバックグラウンドのメンバーが揃っています。大事なのは専攻より「論理的に考えて行動できるか」。入社後の研修で基礎から学べるので、未経験でも安心です。\n\n#プリンシプル #文系 #多様性 #新卒採用 #デジタルマーケ"
+    },
+    {
+      "id": 7,
+      "title": "クライアントの成果が数字に出た",
+      "hook": "自分の仕事が直接成果につながる醍醐味を語る仕事紹介",
+      "category": "リアル",
+      "content": "「施策を実行したら、翌月クライアントのコンバージョンが大幅に改善されました」——これは入社1年半のメンバーが実際に体験した話です。数字が明確に出るからこそ、頑張りが成果として見える。プリンシプルの仕事はやりがいの手触りが明確で、「自分が変えた」という実感をすぐに得られます。\n\n#プリンシプル #成果 #デジタルマーケティング #新卒採用"
+    },
+    {
+      "id": 8,
+      "title": "世界基準で働くとは",
+      "hook": "グローバル視点・海外展開の方向性を採用ブランドに活かす",
+      "category": "ビジョン",
+      "content": "「世界で最も信頼されるマーケティングDXパートナー」——このビジョンを掲げるプリンシプルは、国内に留まらない視野を持っています。社内でも英語コンテンツへの取り組みや海外事例の研究が日常的に行われています。スケールの大きな仕事に挑みたい。そんな人にとって、入社後の成長環境として適した場所です。[要確認: 海外拠点の最新状況]\n\n#プリンシプル #グローバル #ビジョン #新卒採用"
+    },
+    {
+      "id": 9,
+      "title": "残業より濃度を大切に",
+      "hook": "長時間労働ではなく質と効率を評価する働き方の実態",
+      "category": "リアル",
+      "content": "「遅くまで頑張る」より「短時間で成果を出す」——プリンシプルではこちらが評価されます。データを使って効率化し、浮いた時間で新しいスキルを学ぶ。そのサイクルが回るほど、仕事の質がどんどん上がっていきます。長時間残業ではなく「密度の濃い仕事ができるか」を大切にしている会社です。\n\n#プリンシプル #働き方 #ワークライフバランス #新卒採用"
+    },
+    {
+      "id": 10,
+      "title": "採用担当者に直接聞いてみた",
+      "hook": "Q&A形式で採用基準・求める人物像を等身大で伝える",
+      "category": "働く人",
+      "content": "「プリンシプルが採用で一番見るポイントは何ですか？」採用担当者に直接聞いてみました。答えは「自分で考えて動ける人かどうか」。マーケティングの知識ゼロでも、課題に対して仮説を立てて試し、結果から学ぶ姿勢があれば歓迎します。華やかな実績より、等身大の思考プロセスを見せてください。\n\n#プリンシプル #採用 #新卒 #就活 #マーケティング"
     }
-  }
+  ]
+};
+// <<AUTO_ANALYSIS_DATA_END>>
+
+var CATEGORY_COLORS = {
+  "成長":      { bg: "#e0f2fe", text: "#0369a1" },
+  "技術":      { bg: "#ede9fe", text: "#6d28d9" },
+  "カルチャー": { bg: "#fef3c7", text: "#92400e" },
+  "リアル":    { bg: "#fce7f3", text: "#9d174d" },
+  "働く人":    { bg: "#dcfce7", text: "#15803d" },
+  "ビジョン":  { bg: "#fff7ed", text: "#c2410c" }
+};
+
+function catStyle(cat) {
+  return CATEGORY_COLORS[cat] || { bg: "#f1f5f9", text: "#475569" };
 }
 
-function msgToText(messages, max) {
-  return (messages || []).slice(0, max).map(function(m) { return m.text; }).join("\n---\n");
-}
-
-/* ─── App ────────────────────────────────────────────────────── */
 function App() {
-  /* API Key */
-  var apiKeyInitial = function() { return localStorage.getItem(STORAGE_KEY) || ""; };
-  var apiKeyState   = useState(apiKeyInitial);
-  var apiKey        = apiKeyState[0];
-  var setApiKey     = apiKeyState[1];
+  var selState  = useState(null);
+  var selectedId = selState[0];
+  var setSelectedId = selState[1];
 
-  var apiKeyInputState = useState(apiKeyInitial);
-  var apiKeyInput      = apiKeyInputState[0];
-  var setApiKeyInput   = apiKeyInputState[1];
+  var copyState = useState(false);
+  var copied    = copyState[0];
+  var setCopied = copyState[1];
 
-  var showKeyState = useState(false);
-  var showKey      = showKeyState[0];
-  var setShowKey   = showKeyState[1];
+  var panelRef = useRef(null);
 
-  /* Slack Data */
-  var slackInitial = function() {
-    try { var r = localStorage.getItem(SLACK_CACHE); return r ? JSON.parse(r) : null; }
-    catch(_) { return null; }
-  };
-  var slackState = useState(slackInitial);
-  var slackData  = slackState[0];
-  var setSlackData = slackState[1];
+  var data     = DEFAULT_ANALYSIS;
+  var items    = data.items || [];
+  var selected = items.find(function(i) { return i.id === selectedId; });
+  var hasData  = !!data.last_updated;
 
-  /* Angles */
-  var anglesState     = useState(null);
-  var angles          = anglesState[0];
-  var setAngles       = anglesState[1];
-
-  var loadingAnglesState = useState(false);
-  var loadingAngles      = loadingAnglesState[0];
-  var setLoadingAngles   = loadingAnglesState[1];
-
-  /* Content */
-  var selectedState   = useState(null);
-  var selectedAngle   = selectedState[0];
-  var setSelectedAngle = selectedState[1];
-
-  var contentState = useState("");
-  var content      = contentState[0];
-  var setContent   = contentState[1];
-
-  var streamingState = useState(false);
-  var isStreaming    = streamingState[0];
-  var setIsStreaming = streamingState[1];
-
-  /* UI */
-  var copiedState = useState(false);
-  var copied      = copiedState[0];
-  var setCopied   = copiedState[1];
-
-  var errorState = useState(null);
-  var error      = errorState[0];
-  var setError   = errorState[1];
-
-  var abortRef   = useRef(null);
-  var contentRef = useRef(null);
-
-  /* ── API Key 保存 ── */
-  function saveApiKey() {
-    var key = apiKeyInput.trim();
-    if (!key) return;
-    localStorage.setItem(STORAGE_KEY, key);
-    setApiKey(key);
-    setError(null);
-  }
-
-  /* ── ファイル読み込み ── */
-  function loadFile(ev) {
-    var file = ev.target.files && ev.target.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function() {
-      try {
-        var obj = JSON.parse(reader.result);
-        if (!obj.own_channel || !obj.comp_channel) {
-          throw new Error("形式が違います（own_channel / comp_channel が見当たりません）");
-        }
-        setSlackData(obj);
-        try { localStorage.setItem(SLACK_CACHE, JSON.stringify(obj)); } catch(_) {}
-        setAngles(null); setSelectedAngle(null); setContent(""); setError(null);
-      } catch(e) { setError("ファイルエラー: " + e.message); }
-    };
-    reader.readAsText(file);
-    ev.target.value = "";
-  }
-
-  function clearSlack() {
-    localStorage.removeItem(SLACK_CACHE);
-    setSlackData(null); setAngles(null); setSelectedAngle(null); setContent("");
-  }
-
-  /* ── 10切り口 生成 ── */
-  async function generateAngles() {
-    if (!apiKey || !slackData || loadingAngles) return;
-    setLoadingAngles(true);
-    setAngles(null); setSelectedAngle(null); setContent(""); setError(null);
-
-    var own  = slackData.own_channel;
-    var comp = slackData.comp_channel;
-    var prompt =
-      "あなたは株式会社プリンシプルの採用マーケティング専門家です。JSONのみを返してください（コードブロック・説明文は不要）。\n\n" +
-      COMPANY_CTX + "\n\n" +
-      "【自社Slackメッセージ（" + own.label + "） - " + own.message_count + "件 / 取得日: " + slackData.fetched_at + "】\n" +
-      (msgToText(own.messages, 150) || "(メッセージなし)") + "\n\n" +
-      "【参照Slackメッセージ（" + comp.label + "） - " + comp.message_count + "件】\n" +
-      (msgToText(comp.messages, 100) || "(メッセージなし)") + "\n\n" +
-      "## 指示\n" +
-      "上記のSlackデータと採用マーケティングのトレンドを踏まえ、採用SNS・採用ブログに使える切り口を10個提案してください。\n\n" +
-      "## 条件\n" +
-      "- 10個はそれぞれ異なるアプローチ（社員/成長/カルチャー/技術/リアル/ビジョン など複数軸）\n" +
-      "- 就活生の「誰と働くか」「成長できるか」「入社後のリアル」「ビジョンが叶うか」に応えるもの\n" +
-      "- プリンシプルらしさ（データドリブン・等身大・Win-Win）が出る切り口\n" +
-      "- 競合の採用コンテンツトレンドも意識する\n\n" +
-      "## 出力JSON\n" +
-      '{"angles":[{"id":1,"title":"切り口タイトル（20文字以内）","hook":"フック・狙い（60文字以内）","category":"カテゴリ（働く人/成長/カルチャー/技術/リアルなど）"},...10件]}';
-
-    try {
-      var raw = await callGemini(apiKey, prompt);
-      raw = raw.replace(/^```(?:json)?\s*/m, "").replace(/\s*```\s*$/m, "").trim();
-      var m = raw.match(/\{[\s\S]*\}/);
-      if (!m) throw new Error("JSONを抽出できませんでした");
-      var result = JSON.parse(m[0]);
-      if (!Array.isArray(result.angles)) throw new Error("angles 配列が見つかりません");
-      setAngles(result.angles.slice(0, 10));
-    } catch(e) {
-      setError("切り口生成エラー: " + e.message);
-    } finally {
-      setLoadingAngles(false);
+  function selectItem(item) {
+    if (selectedId === item.id) {
+      setSelectedId(null);
+      return;
     }
-  }
-
-  /* ── コンテンツ ストリーミング生成 ── */
-  async function generateContent(angle) {
-    if (!apiKey) return;
-    if (abortRef.current) abortRef.current.abort();
-    var ctrl = new AbortController();
-    abortRef.current = ctrl;
-
-    setSelectedAngle(angle);
-    setContent("");
-    setIsStreaming(true);
-    setError(null);
+    setSelectedId(item.id);
     setCopied(false);
-
-    var ownText = slackData ? msgToText(slackData.own_channel.messages, 80) : "";
-    var prompt =
-      "あなたは株式会社プリンシプルの採用マーケティング担当ライターです。\n\n" +
-      COMPANY_CTX + "\n\n" +
-      "## 選択された切り口\n" +
-      "タイトル: " + angle.title + "\n" +
-      "フック・狙い: " + angle.hook + "\n" +
-      "カテゴリ: " + (angle.category || "採用") + "\n\n" +
-      (ownText ? "## 元になったSlackデータ（参考）\n" + ownText + "\n\n" : "") +
-      "## 指示\n" +
-      "この切り口で、採用ブログ・長文SNS投稿に使える本格的なテキストコンテンツを生成してください。\n\n" +
-      "## 条件\n" +
-      "- 300文字程度（200〜420文字）\n" +
-      "- 就活生に響く等身大の言葉・誠実なトーン\n" +
-      "- 社内の熱量・カルチャーが伝わる具体的な表現\n" +
-      "- 確証のない情報には [要確認: ◯◯] と明示\n" +
-      "- 末尾にハッシュタグ3〜5個（#企業公式中の人 #採用 #Principle 等）\n" +
-      "テキストのみ出力してください（「本文:」「出力:」などのラベルは不要）。";
-
-    try {
-      await streamGemini(apiKey, prompt, function(chunk) {
-        setContent(function(prev) { return prev + chunk; });
-      }, ctrl.signal);
-    } catch(e) {
-      if (e.name !== "AbortError") setError("コンテンツ生成エラー: " + e.message);
-    } finally {
-      setIsStreaming(false);
-    }
-
     setTimeout(function() {
-      if (contentRef.current) contentRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 80);
+      if (panelRef.current) {
+        panelRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }, 30);
   }
 
-  function copyContent() {
-    if (!content || !navigator.clipboard) return;
-    navigator.clipboard.writeText(content).then(function() {
+  function copyContent(text) {
+    var finish = function() {
       setCopied(true);
       setTimeout(function() { setCopied(false); }, 2000);
-    });
+    };
+    if (!navigator.clipboard) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      finish();
+      return;
+    }
+    navigator.clipboard.writeText(text).then(finish);
   }
 
-  /* ── 派生値 ── */
-  var isReady = !!(apiKey && slackData);
-  var own  = slackData && slackData.own_channel;
-  var comp = slackData && slackData.comp_channel;
-  var charLen   = content.length;
-  var charColor = charLen > 420 ? "#c2541f" : charLen > 320 ? "#9a6700" : "#157a51";
+  return React.createElement("div", null,
 
-  /* ─── UI ───────────────────────────────────────────────────── */
-  return (
-    <div style={s.wrap}>
+    /* ── Header ──────────────────────────────────────── */
+    React.createElement("header", { style: S.header },
+      React.createElement("div", { style: S.brand }, "PRINCIPLE"),
+      React.createElement("h1", { style: S.h1 }, "採用コンテンツ 生成ノート"),
+      React.createElement("div", { style: S.statusRow },
+        hasData
+          ? React.createElement(React.Fragment, null,
+              React.createElement("span", { style: S.badge }, "● 最終更新: " + data.last_updated),
+              React.createElement("span", { style: S.statusMeta },
+                "自社 " + data.slack_status.company_messages + "件 ／ 参照 " + data.slack_status.competitor_messages + "件"
+              )
+            )
+          : React.createElement(React.Fragment, null,
+              React.createElement("span", { style: Object.assign({}, S.badge, { background: "#fef9c3", color: "#854d0e" }) }, "○ サンプル表示"),
+              React.createElement("span", { style: S.statusMeta }, "analyze_trends.py を実行すると実データに更新されます")
+            )
+      )
+    ),
 
-      {/* ヘッダー */}
-      <header style={s.hd}>
-        <div style={s.hdMark}>PRINCIPLE</div>
-        <h1 style={s.h1}>採用コンテンツ ライブ生成ツール</h1>
-        <p style={s.hdSub}>Slackの社内データ × Gemini AI で、採用SNS・ブログネタをリアルタイム生成します</p>
-      </header>
+    /* ── Grid ────────────────────────────────────────── */
+    React.createElement("div", { style: S.grid },
+      items.map(function(item) {
+        var isOn = selectedId === item.id;
+        var cs   = catStyle(item.category);
+        return React.createElement("button", {
+          key:     item.id,
+          style:   Object.assign({}, S.card, isOn ? S.cardOn : {}),
+          onClick: function() { selectItem(item); }
+        },
+          React.createElement("div", { style: S.cardTop },
+            React.createElement("span", { style: Object.assign({}, S.num, isOn ? S.numOn : {}) },
+              ("0" + item.id).slice(-2)
+            ),
+            React.createElement("span", { style: Object.assign({}, S.cat, { background: cs.bg, color: cs.text }) },
+              item.category
+            )
+          ),
+          React.createElement("div", { style: S.cardTitle }, item.title),
+          React.createElement("div", { style: S.cardHook  }, item.hook),
+          isOn && React.createElement("div", { style: S.selMark }, "▲ 選択中")
+        );
+      })
+    ),
 
-      {/* STEP 1 API Key */}
-      <section style={s.card}>
-        <span style={s.stepTag}>STEP 1</span>
-        <h2 style={s.h2}>Gemini API キーを設定</h2>
-        <p style={s.lead}>入力したキーはブラウザの localStorage にのみ保存され、外部サーバーには送信されません。</p>
-        <div style={s.keyRow}>
-          <div style={s.keyWrap}>
-            <input
-              style={s.keyInput}
-              type={showKey ? "text" : "password"}
-              placeholder="AIzaSy... または AQ...."
-              value={apiKeyInput}
-              onChange={function(e) { setApiKeyInput(e.target.value); }}
-              onKeyDown={function(e) { if (e.key === "Enter") saveApiKey(); }}
-            />
-            <button style={s.eyeBtn} onClick={function() { setShowKey(!showKey); }}>
-              {showKey ? "🙈" : "👁"}
-            </button>
-          </div>
-          <button
-            style={Object.assign({}, s.saveBtn, (!apiKeyInput.trim() || apiKeyInput.trim() === apiKey) ? { opacity: 0.4 } : {})}
-            onClick={saveApiKey}
-            disabled={!apiKeyInput.trim() || apiKeyInput.trim() === apiKey}
-          >
-            保存
-          </button>
-        </div>
-        {apiKey && <div style={s.savedNote}>✓ APIキー保存済み</div>}
-      </section>
+    /* ── Content Panel ───────────────────────────────── */
+    selected && React.createElement("div", { ref: panelRef, style: S.panel },
+      React.createElement("div", { style: S.panelHead },
+        React.createElement("div", { style: { flex: 1 } },
+          React.createElement("div", { style: S.panelTitle }, selected.title),
+          React.createElement("div", { style: S.panelHook  }, selected.hook)
+        ),
+        React.createElement("button", {
+          style:   Object.assign({}, S.copyBtn, copied ? S.copyBtnOn : {}),
+          onClick: function() { copyContent(selected.content); }
+        }, copied ? "✓ コピー完了" : "📋 コピー")
+      ),
+      React.createElement("div", { style: S.panelBody }, selected.content),
+      React.createElement("div", { style: S.panelFoot }, selected.content.length + " 文字")
+    ),
 
-      {/* STEP 2 Slack Data */}
-      <section style={s.card}>
-        <span style={s.stepTag}>STEP 2</span>
-        <h2 style={s.h2}>Slackデータを読み込む</h2>
-        <p style={s.lead}>
-          <code style={s.code}>analyze_trends.py</code> を実行して生成された
-          <code style={s.code}>slack_raw_data.json</code> を選択してください。読み込んだデータはブラウザにキャッシュされます。
-        </p>
-        <div style={s.fileRow}>
-          <label style={s.fileBtn}>
-            📂 slack_raw_data.json を選択
-            <input type="file" accept=".json" onChange={loadFile} hidden />
-          </label>
-          {slackData && (
-            <button style={s.clearBtn} onClick={clearSlack}>🗑 クリア</button>
-          )}
-        </div>
-        {slackData && (
-          <div style={s.dataInfo}>
-            <span style={s.dataBadge}>✓ 読み込み済み</span>
-            <span style={s.dataMeta}>{slackData.fetched_at} 取得</span>
-            <span style={s.dataMeta}>自社 {own && own.message_count}件</span>
-            <span style={s.dataMeta}>参照 {comp && comp.message_count}件</span>
-          </div>
-        )}
-      </section>
+    /* ── Empty state ─────────────────────────────────── */
+    items.length === 0 && React.createElement("div", { style: S.empty },
+      React.createElement("p", null, "コンテンツがまだ生成されていません。"),
+      React.createElement("br"),
+      React.createElement("code", { style: { background: "#f1f5f9", padding: "4px 10px", borderRadius: 6 } },
+        "python analyze_trends.py"
+      ),
+      React.createElement("p", { style: { marginTop: 8 } }, "を実行してください。")
+    ),
 
-      {/* STEP 3 Generate */}
-      <section style={s.card}>
-        <span style={s.stepTag}>STEP 3</span>
-        <h2 style={s.h2}>10個の切り口を生成</h2>
-        <p style={s.lead}>Gemini が Slack データを分析し、採用コンテンツの切り口を10個提案します。</p>
-        <button
-          style={Object.assign({}, s.genBtn, (!isReady || loadingAngles) ? { opacity: 0.4, cursor: "not-allowed" } : {})}
-          onClick={generateAngles}
-          disabled={!isReady || loadingAngles}
-        >
-          {loadingAngles
-            ? <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                <span className="spinner" />Gemini が切り口を考えています...
-              </span>
-            : "▶ 10個の切り口を生成する"
-          }
-        </button>
-        {!apiKey && <p style={s.hint}>← STEP 1 で API キーを設定してください</p>}
-        {apiKey && !slackData && <p style={s.hint}>← STEP 2 で Slack データを読み込んでください</p>}
-      </section>
-
-      {/* 10切り口 グリッド */}
-      {angles && (
-        <section style={s.anglesSection}>
-          <div style={s.anglesSectionHd}>
-            <h2 style={Object.assign({}, s.h2, { fontSize: 18, margin: 0 })}>生成された切り口</h2>
-            <span style={s.cntBadge}>{angles.length}件</span>
-            <button
-              style={s.regenBtn}
-              onClick={generateAngles}
-              disabled={loadingAngles}
-            >
-              🔄 再生成
-            </button>
-          </div>
-          <p style={Object.assign({}, s.lead, { marginTop: 6 })}>切り口をクリックすると、その場でコンテンツをリアルタイム生成します。</p>
-          <div style={s.anglesGrid}>
-            {angles.map(function(a) {
-              var on = selectedAngle && selectedAngle.id === a.id;
-              return (
-                <button
-                  key={a.id}
-                  style={Object.assign({}, s.angleCard, on ? s.angleCardOn : {})}
-                  onClick={function() { generateContent(a); }}
-                >
-                  <div style={s.angleTop}>
-                    <span style={Object.assign({}, s.numBadge, on ? s.numBadgeOn : {})}>
-                      {("0" + a.id).slice(-2)}
-                    </span>
-                    <span style={Object.assign({}, s.catTag, on ? { background: "#ddf3e8", color: "#157a51" } : {})}>
-                      {a.category || "採用"}
-                    </span>
-                  </div>
-                  <div style={s.angleTitle}>{a.title}</div>
-                  <div style={s.angleHook}>{a.hook}</div>
-                  {on && isStreaming && <div style={s.genningNote}>生成中 ✍️</div>}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* コンテンツ出力 */}
-      {(selectedAngle !== null) && (
-        <section ref={contentRef} style={s.contentSection}>
-          <div style={s.contentHd}>
-            <div>
-              <h2 style={Object.assign({}, s.h2, { fontSize: 17, margin: 0 })}>生成されたコンテンツ</h2>
-              {selectedAngle && (
-                <p style={s.selectedLabel}>切り口: {selectedAngle.title}</p>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {!isStreaming && content && (
-                <button style={s.regenSmBtn} onClick={function() { generateContent(selectedAngle); }}>
-                  🔄 再生成
-                </button>
-              )}
-              <button
-                style={Object.assign({}, s.copyBtn, copied ? s.copyBtnOn : {}, !content ? { opacity: 0.35 } : {})}
-                onClick={copyContent}
-                disabled={!content}
-              >
-                {copied ? "✓ コピー完了" : "📋 コピー"}
-              </button>
-            </div>
-          </div>
-          <div style={s.contentBody}>
-            {content
-              ? <span>{content}{isStreaming && <span className="cursor" />}</span>
-              : <span style={{ color: "#a0aab5" }}>
-                  {isStreaming
-                    ? <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span className="spinner" />生成しています...</span>
-                    : "ここにコンテンツが表示されます"
-                  }
-                </span>
-            }
-          </div>
-          {!isStreaming && content && (
-            <div style={s.contentFooter}>
-              <span style={{ fontSize: 12, color: charColor, fontWeight: 600 }}>{charLen}文字</span>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* エラー */}
-      {error && (
-        <div style={s.errBox}>
-          <span><strong>エラー:</strong> {error}</span>
-          <button style={s.errClose} onClick={function() { setError(null); }}>×</button>
-        </div>
-      )}
-
-      <footer style={s.footer}>
-        APIキーとSlackデータはブラウザ内にのみ保存されます（外部サーバーへの送信なし）。
-        Gemini API には直接ブラウザからリクエストします。
-      </footer>
-    </div>
+    /* ── Footer ──────────────────────────────────────── */
+    React.createElement("footer", { style: S.footer },
+      "analyze_trends.py で自動生成 ／ 参照チャンネルは分析のみ利用（転用なし）"
+    )
   );
 }
 
-/* ─── スタイル ───────────────────────────────────────────────── */
-var c = { ink: "#14181f", ink2: "#5b6573", line: "#e3e7ee", bg: "#f0f4f8", accent: "#1f6feb" };
-var s = {
-  wrap: { maxWidth: 900, margin: "0 auto", padding: "28px 20px 60px", lineHeight: 1.6, fontFamily: '-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif', color: c.ink },
+/* ── Styles ───────────────────────────────────────────── */
+var S = {
+  header: {
+    background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+    borderRadius: 16,
+    padding: "28px 32px 24px",
+    marginBottom: 24,
+    color: "#fff"
+  },
+  brand: {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.2em",
+    color: "#94a3b8",
+    marginBottom: 6
+  },
+  h1: {
+    fontSize: 22,
+    fontWeight: 700,
+    marginBottom: 12,
+    lineHeight: 1.3
+  },
+  statusRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap"
+  },
+  badge: {
+    display: "inline-block",
+    background: "#dcfce7",
+    color: "#15803d",
+    fontSize: 12,
+    fontWeight: 600,
+    padding: "3px 10px",
+    borderRadius: 20
+  },
+  statusMeta: {
+    fontSize: 12,
+    color: "#94a3b8"
+  },
 
-  hd: { marginBottom: 28 },
-  hdMark: { fontSize: 11, letterSpacing: "0.28em", fontWeight: 700, color: c.accent, marginBottom: 10 },
-  h1: { fontSize: 26, margin: "0 0 8px", letterSpacing: "-0.01em" },
-  hdSub: { color: c.ink2, fontSize: 14, margin: 0 },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: window.innerWidth < 640 ? "1fr" : "repeat(2, 1fr)",
+    gap: 12,
+    marginBottom: 4
+  },
+  card: {
+    background: "#fff",
+    border: "2px solid transparent",
+    borderRadius: 12,
+    padding: "16px 18px",
+    textAlign: "left",
+    cursor: "pointer",
+    boxShadow: "0 1px 3px rgba(0,0,0,.06)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    transition: "box-shadow .15s"
+  },
+  cardOn: {
+    border: "2px solid #6366f1",
+    background: "#fafbff",
+    boxShadow: "0 0 0 4px rgba(99,102,241,.08)"
+  },
+  cardTop: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8
+  },
+  num: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    background: "#f1f5f9",
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 700,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0
+  },
+  numOn: {
+    background: "#6366f1",
+    color: "#fff"
+  },
+  cat: {
+    fontSize: 11,
+    fontWeight: 600,
+    padding: "2px 8px",
+    borderRadius: 12
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#1e293b",
+    lineHeight: 1.4
+  },
+  cardHook: {
+    fontSize: 12,
+    color: "#64748b",
+    lineHeight: 1.5
+  },
+  selMark: {
+    fontSize: 11,
+    color: "#6366f1",
+    fontWeight: 600,
+    marginTop: 2
+  },
 
-  card: { background: "#fff", border: "1px solid " + c.line, borderRadius: 14, padding: "22px 22px 20px", marginBottom: 14, position: "relative" },
-  stepTag: { position: "absolute", top: 18, right: 20, fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", color: "#b0bac7", background: c.bg, padding: "3px 9px", borderRadius: 999 },
-  h2: { fontSize: 16, fontWeight: 700, margin: "0 0 4px" },
-  lead: { fontSize: 13, color: c.ink2, margin: "0 0 14px" },
-  code: { fontFamily: "ui-monospace,monospace", fontSize: 12, background: "#f0f4f8", padding: "1px 5px", borderRadius: 4 },
+  panel: {
+    background: "#fff",
+    borderRadius: 14,
+    padding: "24px 28px",
+    margin: "16px 0",
+    border: "2px solid #e0e7ff",
+    boxShadow: "0 4px 16px rgba(99,102,241,.08)"
+  },
+  panelHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    marginBottom: 20
+  },
+  panelTitle: {
+    fontSize: 17,
+    fontWeight: 700,
+    color: "#1e293b",
+    marginBottom: 4
+  },
+  panelHook: {
+    fontSize: 13,
+    color: "#6366f1",
+    fontWeight: 500
+  },
+  copyBtn: {
+    background: "#6366f1",
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    padding: "9px 18px",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    flexShrink: 0
+  },
+  copyBtnOn: {
+    background: "#16a34a"
+  },
+  panelBody: {
+    fontSize: 14,
+    lineHeight: 1.9,
+    color: "#334155",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-all",
+    background: "#f8fafc",
+    borderRadius: 8,
+    padding: "16px 18px",
+    borderLeft: "3px solid #6366f1"
+  },
+  panelFoot: {
+    fontSize: 11,
+    color: "#94a3b8",
+    textAlign: "right",
+    marginTop: 10
+  },
 
-  keyRow: { display: "flex", gap: 8 },
-  keyWrap: { flex: 1, display: "flex", border: "1.5px solid " + c.line, borderRadius: 9, overflow: "hidden", background: "#fff" },
-  keyInput: { flex: 1, fontFamily: "ui-monospace,monospace", fontSize: 13, padding: "9px 12px", border: "none", outline: "none", background: "transparent" },
-  eyeBtn: { padding: "0 13px", border: "none", background: "none", cursor: "pointer", fontSize: 15 },
-  saveBtn: { fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "9px 20px", border: "none", borderRadius: 9, background: c.accent, color: "#fff", cursor: "pointer" },
-  savedNote: { fontSize: 12, color: "#157a51", marginTop: 8 },
-
-  fileRow: { display: "flex", gap: 10, alignItems: "center", marginBottom: 10 },
-  fileBtn: { display: "inline-block", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "9px 16px", border: "1.5px solid " + c.accent, color: c.accent, borderRadius: 9, background: "#fff" },
-  clearBtn: { fontFamily: "inherit", fontSize: 12, cursor: "pointer", padding: "7px 12px", border: "1px solid " + c.line, borderRadius: 8, background: "#fff", color: c.ink2 },
-  dataInfo: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 12px", background: c.bg, borderRadius: 9 },
-  dataBadge: { fontSize: 12, fontWeight: 700, color: "#157a51" },
-  dataMeta: { fontSize: 12, color: c.ink2 },
-
-  genBtn: { fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer", width: "100%", padding: 16, border: "none", borderRadius: 11, background: c.ink, color: "#fff" },
-  hint: { fontSize: 12, color: "#9a6700", background: "#fff4e0", padding: "7px 12px", borderRadius: 8, marginTop: 10, marginBottom: 0 },
-
-  anglesSection: { marginBottom: 14 },
-  anglesSectionHd: { display: "flex", alignItems: "center", gap: 10, marginBottom: 2 },
-  cntBadge: { fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: c.accent, color: "#fff" },
-  regenBtn: { fontFamily: "inherit", fontSize: 12, cursor: "pointer", padding: "5px 12px", border: "1px solid " + c.line, borderRadius: 8, background: "#fff", color: c.ink2, marginLeft: "auto" },
-
-  anglesGrid: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 },
-  angleCard: { textAlign: "left", background: "#fff", border: "1.5px solid " + c.line, borderRadius: 12, padding: 16, cursor: "pointer", fontFamily: "inherit" },
-  angleCardOn: { borderColor: c.accent, background: "#f0f7ff", boxShadow: "0 0 0 3px rgba(31,111,235,0.13)" },
-  angleTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-  numBadge: { fontSize: 14, fontWeight: 800, color: "#c0cad5", letterSpacing: "0.04em" },
-  numBadgeOn: { color: c.accent },
-  catTag: { fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#f0f4f8", color: c.ink2 },
-  angleTitle: { fontSize: 15, fontWeight: 700, marginBottom: 6, color: c.ink, lineHeight: 1.4 },
-  angleHook: { fontSize: 12.5, color: c.ink2, lineHeight: 1.6 },
-  genningNote: { marginTop: 8, fontSize: 11, color: c.accent, fontWeight: 600 },
-
-  contentSection: { background: "#fff", border: "1px solid " + c.line, borderRadius: 14, overflow: "hidden", marginBottom: 14 },
-  contentHd: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 20px 14px", borderBottom: "1px solid " + c.line, flexWrap: "wrap", gap: 10 },
-  selectedLabel: { fontSize: 12, color: c.ink2, margin: "4px 0 0" },
-  regenSmBtn: { fontFamily: "inherit", fontSize: 12, cursor: "pointer", padding: "6px 12px", border: "1px solid " + c.line, borderRadius: 7, background: "#fff", color: c.ink2 },
-  copyBtn: { fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "7px 20px", border: "1.5px solid " + c.accent, borderRadius: 8, background: c.accent, color: "#fff" },
-  copyBtnOn: { background: "#157a51", borderColor: "#157a51" },
-  contentBody: { padding: "20px 22px", fontSize: 15, lineHeight: 1.85, whiteSpace: "pre-wrap", wordBreak: "break-word", minHeight: 100, color: c.ink },
-  contentFooter: { padding: "0 22px 14px", display: "flex", justifyContent: "flex-end" },
-
-  errBox: { background: "#fff0f0", border: "1px solid #fcc", borderRadius: 10, padding: "12px 16px", marginBottom: 14, fontSize: 13, color: "#c2541f", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 },
-  errClose: { fontFamily: "inherit", fontSize: 18, cursor: "pointer", border: "none", background: "none", color: "#c2541f", padding: 0, lineHeight: 1, flexShrink: 0 },
-
-  footer: { textAlign: "center", fontSize: 11, color: "#b0bac7", marginTop: 28, lineHeight: 1.8 }
+  empty: {
+    textAlign: "center",
+    padding: "60px 24px",
+    color: "#94a3b8",
+    fontSize: 14,
+    lineHeight: 2
+  },
+  footer: {
+    textAlign: "center",
+    fontSize: 11,
+    color: "#94a3b8",
+    marginTop: 40,
+    paddingTop: 20,
+    borderTop: "1px solid #e2e8f0"
+  }
 };
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
 </body>
 </html>
