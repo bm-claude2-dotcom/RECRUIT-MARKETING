@@ -16,19 +16,23 @@
       overflow: hidden;
     }
 
-    /* ── Header ─────────────────────────────────── */
+    /* ── Header ───────────────────────────────────────── */
     .hd {
       flex-shrink: 0;
       background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #1a3a5c 100%);
       color: #fff;
-      padding: 20px 28px 16px;
+      padding: 18px 24px 14px;
     }
-    .hd-brand {
-      font-size: 10px; font-weight: 700; letter-spacing: 0.3em;
-      color: #475569; margin-bottom: 5px;
+    .hd-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
     }
-    .hd-title { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
-    .hd-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .hd-left { flex: 1; min-width: 0; }
+    .hd-brand { font-size: 10px; font-weight: 700; letter-spacing: 0.3em; color: #475569; margin-bottom: 4px; }
+    .hd-title { font-size: 21px; font-weight: 700; margin-bottom: 8px; }
+    .hd-row   { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .badge-live {
       display: inline-flex; align-items: center; gap: 5px;
       background: #dcfce7; color: #15803d;
@@ -42,10 +46,47 @@
     }
     .hd-meta { font-size: 12px; color: #64748b; }
 
-    /* ── 2-column layout ─────────────────────────── */
+    /* ── Update button ────────────────────────────────── */
+    .update-btn {
+      flex-shrink: 0;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1.5px solid rgba(255,255,255,0.2);
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: background .2s, border-color .2s, transform .1s;
+    }
+    .update-btn:hover:not(:disabled) {
+      background: rgba(255,255,255,0.18);
+      border-color: rgba(255,255,255,0.35);
+      transform: translateY(-1px);
+    }
+    .update-btn:disabled { cursor: not-allowed; opacity: 0.85; }
+    .update-btn.loading { background: rgba(99,102,241,0.3);  border-color: rgba(99,102,241,0.55); }
+    .update-btn.success { background: rgba(22,163,74,0.3);   border-color: rgba(22,163,74,0.6);   }
+    .update-btn.err     { background: rgba(220,38,38,0.25);  border-color: rgba(220,38,38,0.5);   }
+
+    /* Spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 13px; height: 13px; flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: rgba(255,255,255,0.9);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    /* ── 2-column layout ──────────────────────────────── */
     .layout { flex: 1; display: flex; overflow: hidden; min-height: 0; }
 
-    /* ── Left column (card list) ──────────────────── */
+    /* ── Left column ──────────────────────────────────── */
     .col-l {
       width: 320px; flex-shrink: 0;
       overflow-y: auto;
@@ -55,17 +96,12 @@
     }
     .col-l-label {
       font-size: 10px; font-weight: 700; letter-spacing: 0.15em;
-      color: #94a3b8; text-transform: uppercase;
-      padding: 4px 4px 10px;
+      color: #94a3b8; text-transform: uppercase; padding: 4px 4px 10px;
     }
     .card {
-      background: #fff;
-      border: 2px solid transparent;
-      border-radius: 11px;
-      padding: 11px 13px;
-      text-align: left; cursor: pointer; width: 100%;
-      display: flex; flex-direction: column; gap: 5px;
-      margin-bottom: 7px;
+      background: #fff; border: 2px solid transparent; border-radius: 11px;
+      padding: 11px 13px; text-align: left; cursor: pointer; width: 100%;
+      display: flex; flex-direction: column; gap: 5px; margin-bottom: 7px;
       box-shadow: 0 1px 3px rgba(0,0,0,.05);
       transition: border-color .15s, box-shadow .15s;
     }
@@ -85,23 +121,20 @@
     .card.on .card-title { color: #4338ca; }
     .card-hook { font-size: 11px; color: #64748b; line-height: 1.5; }
 
-    /* ── Right column (preview) ───────────────────── */
-    .col-r {
-      flex: 1; overflow-y: auto;
-      padding: 14px 18px 40px;
-    }
+    /* Cards loading dim */
+    #cards { transition: opacity .3s; }
+    #cards.loading { opacity: 0.3; pointer-events: none; }
+
+    /* ── Right column ─────────────────────────────────── */
+    .col-r { flex: 1; overflow-y: auto; padding: 14px 18px 40px; }
     .pv-wrap {
-      background: #fff;
-      border-radius: 14px;
-      border: 1.5px solid #e2e8f0;
+      background: #fff; border-radius: 14px; border: 1.5px solid #e2e8f0;
       box-shadow: 0 2px 8px rgba(0,0,0,.05);
       display: flex; flex-direction: column;
-      min-height: calc(100% - 8px);
-      overflow: hidden;
+      min-height: calc(100% - 8px); overflow: hidden;
     }
     .empty {
-      flex: 1;
-      display: flex; flex-direction: column;
+      flex: 1; display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       gap: 10px; color: #94a3b8; font-size: 14px;
       line-height: 1.9; text-align: center; padding: 60px 40px;
@@ -109,7 +142,7 @@
     .empty-icon { font-size: 28px; color: #cbd5e1; }
     .pv-hd { padding: 18px 22px 12px; border-bottom: 1px solid #f1f5f9; }
     .pv-title { font-size: 18px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
-    .pv-hook { font-size: 13px; color: #6366f1; font-weight: 500; }
+    .pv-hook  { font-size: 13px; color: #6366f1; font-weight: 500; }
     .tabs {
       display: flex; padding: 0 22px;
       background: #fafbff; border-bottom: 1px solid #f1f5f9;
@@ -128,38 +161,38 @@
       padding: 18px 22px 20px; gap: 14px;
     }
     .txt-body {
-      flex: 1;
-      background: #f8fafc;
-      border-left: 3px solid #6366f1;
-      border-radius: 0 10px 10px 0;
-      padding: 14px 16px;
-      font-size: 14px; line-height: 1.9; color: #334155;
-      word-break: break-all; min-height: 100px;
+      flex: 1; background: #f8fafc;
+      border-left: 3px solid #6366f1; border-radius: 0 10px 10px 0;
+      padding: 14px 16px; font-size: 14px; line-height: 1.9;
+      color: #334155; word-break: break-all; min-height: 100px;
     }
     .txt-ft { display: flex; align-items: center; justify-content: space-between; }
     .char-cnt { font-size: 12px; color: #94a3b8; }
     .copy-btn {
-      background: #6366f1; color: #fff; border: none;
-      border-radius: 8px; padding: 8px 20px;
-      font-size: 13px; font-weight: 600; cursor: pointer;
+      background: #6366f1; color: #fff; border: none; border-radius: 8px;
+      padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
       transition: background .2s; white-space: nowrap;
     }
     .copy-btn:hover { background: #4f46e5; }
-    .copy-btn.done { background: #16a34a; }
-    .col-l::-webkit-scrollbar,
-    .col-r::-webkit-scrollbar { width: 4px; }
-    .col-l::-webkit-scrollbar-track,
-    .col-r::-webkit-scrollbar-track { background: transparent; }
-    .col-l::-webkit-scrollbar-thumb,
-    .col-r::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+    .copy-btn.done  { background: #16a34a; }
+
+    /* Scrollbar */
+    .col-l::-webkit-scrollbar, .col-r::-webkit-scrollbar { width: 4px; }
+    .col-l::-webkit-scrollbar-track, .col-r::-webkit-scrollbar-track { background: transparent; }
+    .col-l::-webkit-scrollbar-thumb, .col-r::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
   </style>
 </head>
 <body>
 
 <header class="hd">
-  <div class="hd-brand">PRINCIPLE</div>
-  <div class="hd-title">採用コンテンツ 生成ノート</div>
-  <div class="hd-row" id="hd-row"></div>
+  <div class="hd-inner">
+    <div class="hd-left">
+      <div class="hd-brand">PRINCIPLE</div>
+      <div class="hd-title">採用コンテンツ 生成ノート</div>
+      <div class="hd-row" id="hd-row"></div>
+    </div>
+    <button class="update-btn" id="update-btn" onclick="doUpdate()">🔄 最新データに更新</button>
+  </div>
 </header>
 
 <div class="layout">
@@ -173,64 +206,66 @@
 </div>
 
 <script>
-const DATA = {
+// ── Initial sample data (replaced by /api/update response) ────────
+var DATA = {
   "last_updated": null,
   "slack_status": { "company_messages": 0, "competitor_messages": 0 },
   "items": [
     {
       "id": 1, "title": "入社3ヶ月で初登壇", "hook": "若手が安心して挑戦できる文化を証明する等身大エピソード", "category": "成長",
       "short_text": "入社3ヶ月、まだ右も左もわからない時期に社内勉強会で初登壇しました。先輩たちの温かいフィードバックに背中を押され、「失敗を恐れず挑戦できる」環境を実感した日。成長したいなら、プリンシプルへ。\n#プリンシプル #新卒採用 #成長できる会社 #マーケティング",
-      "long_text": "入社してわずか3ヶ月。まだ右も左もわからない時期に、上司から「次の社内勉強会で発表してみない？」と声をかけていただきました。\n\n緊張しながらGA4の分析手法を発表すると、先輩社員から鋭い質問と温かいフィードバックが飛び交いました。失敗を責めるのではなく、「どうすれば伝わるか」を一緒に考えてくれる雰囲気——それがプリンシプルの文化です。\n\n「トップダウンで指示を待つ」のではなく、一人ひとりが自分のペースで成長できる環境。チャレンジする人を、会社全体で応援する姿勢が根付いています。\n\n#プリンシプル #新卒採用 #成長できる会社 #マーケティング #就活"
+      "long_text": "入社してわずか3ヶ月。まだ右も左もわからない時期に、上司から「次の社内勉強会で発表してみない？」と声をかけていただきました。\n\n緊張しながらGA4の分析手法を発表すると、先輩社員から鋭い質問と温かいフィードバックが飛び交いました。「失敗を責めるのではなく、どうすれば伝わるかを一緒に考えてくれる」雰囲気——それがプリンシプルの文化です。\n\nトップダウンで指示を待つのではなく、一人ひとりが自分のペースで成長できる環境。チャレンジする人を、会社全体で応援する姿勢が根付いています。\n\n#プリンシプル #新卒採用 #成長できる会社 #マーケティング #就活"
     },
     {
       "id": 2, "title": "データが変える意思決定", "hook": "GA4・BigQueryを日常的に使う職場をリアルに伝える", "category": "技術",
       "short_text": "「データドリブン」って実際どういう仕事？プリンシプルではGA4やBigQueryで毎日クライアントの課題を数字で解決します。直感じゃなく、データで動かす仕事の面白さを体験しに来ませんか。\n#GA4 #データ分析 #プリンシプル #新卒採用",
-      "long_text": "「データドリブン」という言葉は就活でよく耳にするけれど、実際どんな場面で使うの？\n\nプリンシプルでは、Google Analytics 4・GTM・BigQueryといったツールを日常的に扱いながら、クライアントのWebサイト改善やマーケティング施策に取り組んでいます。「なんとなくこのページが良さそう」ではなく、「このページはCVRが2倍高いので、この要素を横展開すべきだ」と数字で語れるようになります。\n\n直感ではなくデータで説得する。その積み重ねが、自分自身の論理思考力を確実に鍛えます。デジタルマーケティングを武器にしたい方、ぜひ一緒に働きましょう。\n\n#GA4 #BigQuery #データ分析 #プリンシプル #新卒採用 #デジタルマーケティング"
+      "long_text": "「データドリブン」という言葉は就活でよく耳にするけれど、実際どんな場面で使うの？\n\nプリンシプルでは、Google Analytics 4・GTM・BigQueryといったツールを日常的に扱いながら、クライアントのWebサイト改善やマーケティング施策に取り組んでいます。「なんとなくこのページが良さそう」ではなく、「このページはCVRが高いので、この要素を横展開すべきだ」と数字で語れるようになります。\n\n直感ではなくデータで説得する。その積み重ねが、自分自身の論理思考力を確実に鍛えます。\n\n#GA4 #BigQuery #データ分析 #プリンシプル #新卒採用 #デジタルマーケティング"
     },
     {
       "id": 3, "title": "月1回の全社勉強会", "hook": "学ぶ文化が根付く職場をカジュアルに紹介する", "category": "カルチャー",
       "short_text": "プリンシプルでは月1回の全社勉強会が恒例。テーマはSEOアップデートからAI活用、メンバーの趣味まで幅広い。業務時間内に堂々と学べる文化が、ここにあります。\n#プリンシプル #学習文化 #カルチャー #新卒採用",
-      "long_text": "プリンシプルでは月に一度、全社員が集まる勉強会を開催しています。\n\nテーマは自由で、最新のSEOコアアップデートの読み解き方から、Gemini APIを使った業務自動化の実例、はたまたメンバーの副業や趣味まで多岐にわたります。「業務時間内に学んでいい」という雰囲気が自然に根付いているのがプリンシプルの特徴です。\n\n入社1年目から発表の機会があり、アウトプットすることで知識が定着するサイクルが生まれています。「吸収したことを試せる環境」「試したことを共有できる文化」——その両方が揃っているから、成長スピードが自然と上がります。\n\n#プリンシプル #学習文化 #勉強会 #新卒採用 #カルチャー"
+      "long_text": "プリンシプルでは月に一度、全社員が集まる勉強会を開催しています。\n\nテーマは自由で、最新のSEOコアアップデートの読み解き方から、Gemini APIを使った業務自動化の実例、はたまたメンバーの副業や趣味まで多岐にわたります。「業務時間内に学んでいい」という雰囲気が自然に根付いているのがプリンシプルの特徴です。\n\n入社1年目から発表の機会があり、アウトプットすることで知識が定着するサイクルが生まれています。好奇心があれば、どんどん吸収できる環境です。\n\n#プリンシプル #学習文化 #勉強会 #新卒採用 #カルチャー"
     },
     {
       "id": 4, "title": "2年目でリーダー就任", "hook": "若手に早期から裁量が与えられるリアルなキャリアパス", "category": "リアル",
       "short_text": "入社2年目でプロジェクトリーダーに。「まだ自信がないのに任された」と最初は戸惑ったけど、やるしかない環境が一番成長できた——そんな先輩の声を聞いて、私もここに入社を決めました。\n#プリンシプル #キャリア #成長 #新卒採用",
-      "long_text": "入社2年目でプロジェクトリーダーに就任したメンバーがいます。\n\n「まだ自信がないのに任された」と振り返りつつも、「やるしかない状況が一番成長できた」と話してくれました。プリンシプルでは年次よりも実力と意欲が評価される文化があり、「まだ早い」と決めつけずに挑戦の機会を与えてくれます。\n\nもちろん、無責任に放り投げるわけではありません。先輩や上司のサポートが手厚く、「困ったらいつでも相談できる」という安心感の中で、本番の経験を積んでいけます。\n\n若いうちからリーダーシップを発揮したい方にとって、プリンシプルはまさに理想的な環境です。\n\n#プリンシプル #キャリア #成長 #新卒採用 #マーケティング就職"
+      "long_text": "入社2年目でプロジェクトリーダーに就任したメンバーがいます。\n\n「まだ自信がないのに任された」と振り返りつつも、「やるしかない状況が一番成長できた」と話してくれました。プリンシプルでは年次よりも実力と意欲が評価される文化があり、若いうちから本番の経験を積めます。\n\nもちろん、無責任に放り投げるわけではありません。先輩や上司のサポートが手厚く、「困ったらいつでも相談できる」という安心感の中で挑戦できます。\n\n#プリンシプル #キャリア #成長 #新卒採用 #マーケティング就職"
     },
     {
       "id": 5, "title": "1on1が変えたキャリア観", "hook": "上司との丁寧な対話が根付く心理的安全性の高い職場", "category": "カルチャー",
       "short_text": "週1回の1on1で「次どんなことに挑戦したいですか？」と毎回聞かれます。評価のための面談じゃない、一緒に考えるための時間——そんな関係性を大切にしているのがプリンシプルです。\n#プリンシプル #1on1 #心理的安全性 #新卒採用",
-      "long_text": "週1回の1on1が、私のキャリア観を変えました。\n\n「次どんなことに挑戦したいですか？」上司から毎回聞かれるこの言葉で、漠然としていた将来像が少しずつ具体的になっていきました。評価のための面談ではなく、一緒に考えるための時間——それがプリンシプルの1on1です。\n\n「こんなこと言ったら変に思われないかな」という不安がなくなると、仕事への向き合い方が変わります。自分の弱みを正直に話せる環境があるから、改善スピードも自然と上がります。\n\n心理的安全性を大切にする文化が、プリンシプルには根付いています。\n\n#プリンシプル #1on1 #心理的安全性 #新卒採用 #働き方"
+      "long_text": "週1回の1on1が、私のキャリア観を変えました。\n\n「次どんなことに挑戦したいですか？」上司から毎回聞かれるこの言葉で、漠然としていた将来像が少しずつ具体的になっていきました。評価のための面談ではなく、一緒に考えるための時間——それがプリンシプルの1on1です。\n\n「こんなこと言ったら変に思われないかな」という不安がなくなると、仕事への向き合い方が変わります。心理的安全性を大切にする文化が、プリンシプルには根付いています。\n\n#プリンシプル #1on1 #心理的安全性 #新卒採用 #働き方"
     },
     {
       "id": 6, "title": "文系出身でもデータの世界へ", "hook": "文系・理系問わず活躍できる間口の広さをリアルに伝える", "category": "働く人",
       "short_text": "文学部出身でも、デジタルマーケティングの世界で活躍できる。プリンシプルには文系・理系・外語系と多様な仲間が集まっています。大事なのは専攻じゃなく、論理的に考えて動ける姿勢。\n#プリンシプル #文系 #多様性 #新卒採用",
-      "long_text": "文学部出身の私が、なぜデータマーケティングの会社に？と驚かれることがあります。\n\nでもプリンシプルには、文系・理系・外語系・芸術系と多様なバックグラウンドのメンバーが揃っています。大事なのは専攻よりも「課題に対して仮説を立て、データで検証し、改善する」という思考プロセスを楽しめるかどうか。\n\n入社後の研修でGA4やGTMの基礎から丁寧に学べるため、全くの未経験でも安心です。「理系じゃないから自分には無理かも」という不安は、入社後すぐに解消されました。\n\n多様な視点を持ったメンバーが集まるからこそ、課題解決のアイデアも豊かになります。\n\n#プリンシプル #文系 #多様性 #新卒採用 #デジタルマーケ"
+      "long_text": "文学部出身の私が、なぜデータマーケティングの会社に？と驚かれることがあります。\n\nでもプリンシプルには、文系・理系・外語系・芸術系と多様なバックグラウンドのメンバーが揃っています。大事なのは専攻よりも「課題に仮説を立てて、データで検証し、改善する」という思考プロセスを楽しめるかどうか。\n\n入社後の研修でGA4やGTMの基礎から丁寧に学べるため、全くの未経験でも安心です。多様な視点を持ったメンバーが集まるからこそ、課題解決のアイデアも豊かになります。\n\n#プリンシプル #文系 #多様性 #新卒採用 #デジタルマーケ"
     },
     {
       "id": 7, "title": "クライアントの成果が数字に出た", "hook": "自分の仕事が直接成果につながる手触り感を伝える", "category": "リアル",
       "short_text": "自分の施策が数字に出る瞬間——これがデジタルマーケの醍醐味。入社1年半のメンバーがクライアントのCVR改善に成功した実体験。プリンシプルは「やった分だけ結果が見える」仕事です。\n#プリンシプル #成果 #デジタルマーケティング #新卒採用",
-      "long_text": "「自分の施策が数字に出る瞬間が、この仕事で一番好きな瞬間です」——入社1年半のメンバーが話してくれました。\n\nクライアントのランディングページを改善し、翌月のコンバージョン数が大幅に改善。「あの提案が効いた」という手触り感は、データがあるからこそ得られるものです。\n\nプリンシプルの仕事はやりがいの手触りが明確。「なんとなく頑張った」ではなく、「あの施策で数字が動いた」という確かな実感を積み重ねられます。それが自信につながり、次の挑戦への原動力になります。\n\n#プリンシプル #成果 #デジタルマーケティング #新卒採用 #やりがい"
+      "long_text": "「自分の施策が数字に出る瞬間が、この仕事で一番好きな瞬間です」——入社1年半のメンバーが話してくれました。\n\nクライアントのランディングページを改善し、翌月のコンバージョン数が大幅に改善。「あの提案が効いた」という手触り感は、データがあるからこそ得られるものです。\n\n「なんとなく頑張った」ではなく、「あの施策で数字が動いた」という確かな実感を積み重ねられる。それが自信につながり、次の挑戦への原動力になります。\n\n#プリンシプル #成果 #デジタルマーケティング #新卒採用 #やりがい"
     },
     {
       "id": 8, "title": "世界基準で働くとは", "hook": "グローバルビジョンを採用ブランドに活かす切り口", "category": "ビジョン",
       "short_text": "「世界で最も信頼されるマーケティングDXパートナー」——プリンシプルのビジョンは日本国内に留まりません。スケールの大きな仕事がしたい人、一緒に世界を目指しませんか。\n#プリンシプル #ビジョン #グローバル #新卒採用",
-      "long_text": "「世界で最も信頼されるマーケティングDXパートナー」——プリンシプルはこのビジョンを本気で追いかけています。\n\n社内では英語コンテンツへの取り組みや海外事例のリサーチが日常的に行われており、グローバルな視野が自然と養われる環境があります。[要確認: 海外拠点・海外クライアントの最新状況]\n\n大きなビジョンに共鳴できるメンバーが集まるから、仕事のスケール感が違います。「目の前の作業をこなす」ではなく「世界をよりよくするためにデータを使う」という感覚で働けること——それがプリンシプルで働く意義のひとつです。\n\n#プリンシプル #ビジョン #グローバル #新卒採用 #デジタルマーケ"
+      "long_text": "「世界で最も信頼されるマーケティングDXパートナー」——プリンシプルはこのビジョンを本気で追いかけています。\n\n社内では英語コンテンツへの取り組みや海外事例のリサーチが日常的に行われており、グローバルな視野が自然と養われる環境があります。[要確認: 海外拠点・海外クライアントの最新状況]\n\n大きなビジョンに共鳴できるメンバーが集まるから、仕事のスケール感が違います。「世界をよりよくするためにデータを使う」という感覚で働けること——それがプリンシプルで働く意義のひとつです。\n\n#プリンシプル #ビジョン #グローバル #新卒採用 #デジタルマーケ"
     },
     {
       "id": 9, "title": "残業より仕事の濃度を上げる", "hook": "長時間労働ではなく質と効率を重視する働き方の実態", "category": "リアル",
       "short_text": "「遅くまで頑張る」より「短時間で成果を出す」——プリンシプルで評価されるのは後者です。データで効率化し、浮いた時間で新スキルを習得するサイクルが、ここにはあります。\n#プリンシプル #働き方 #ワークライフバランス #新卒採用",
-      "long_text": "「遅くまで頑張る」より「短時間で成果を出す」——プリンシプルでは後者が評価されます。\n\nデータを活用して業務を効率化し、浮いた時間で新しいスキルを習得する。そのサイクルが回るほど、仕事の質がどんどん上がっていきます。長時間労働を美徳にするのではなく、「限られた時間でどれだけ高い成果を出せるか」を大切にしている会社です。\n\n[要確認: 月平均残業時間の具体数値]。数字以上に、「濃い仕事ができたか」という質を重視する文化が根付いています。オン・オフのメリハリをつけながら、着実に成長できる環境です。\n\n#プリンシプル #働き方 #ワークライフバランス #新卒採用 #仕事の質"
+      "long_text": "「遅くまで頑張る」より「短時間で成果を出す」——プリンシプルでは後者が評価されます。\n\nデータを活用して業務を効率化し、浮いた時間で新しいスキルを習得する。そのサイクルが回るほど、仕事の質がどんどん上がっていきます。長時間労働を美徳にするのではなく、「限られた時間でどれだけ高い成果を出せるか」を大切にしている会社です。\n\n数字以上に、「濃い仕事ができたか」という質を重視する文化が根付いています。オン・オフのメリハリをつけながら、着実に成長できる環境です。\n\n#プリンシプル #働き方 #ワークライフバランス #新卒採用 #仕事の質"
     },
     {
       "id": 10, "title": "採用担当者に直接聞いてみた", "hook": "採用基準・求める人物像をQ&A形式で等身大に伝える", "category": "働く人",
       "short_text": "「プリンシプルが採用で一番見るポイントは？」直接聞いてみました。答えは「自分で考えて動ける人かどうか」。知識ゼロでも、論理的に考えて試せる人を歓迎します。\n#プリンシプル #採用 #新卒 #就活",
-      "long_text": "「プリンシプルが採用で一番見るポイントは何ですか？」採用担当者に直接聞いてみました。\n\n「マーケティングの知識よりも、自分で課題を見つけて仮説を立て、試して改善できるかどうかです。GAやSEOは入社後に教えられますが、考えて動く姿勢は一朝一夕では身につかないので」\n\n華やかな実績より、等身大の思考プロセスを見せてほしい——それがプリンシプルのスタンスです。「自分はまだ何もできない」と不安に思っている方も、「どう考えたか」「何を試したか」を丁寧に語れれば、可能性は十分あります。\n\n#プリンシプル #採用 #新卒 #就活 #マーケティング"
+      "long_text": "「プリンシプルが採用で一番見るポイントは何ですか？」採用担当者に直接聞いてみました。\n\n「マーケティングの知識よりも、自分で課題を見つけて仮説を立て、試して改善できるかどうかです。GAやSEOは入社後に教えられますが、考えて動く姿勢は一朝一夕では身につかないので」\n\n華やかな実績より、等身大の思考プロセスを見せてほしい——それがプリンシプルのスタンスです。「自分はまだ何もできない」と不安に思っている方も、「どう考えたか」「何を試したか」を丁寧に語れれば可能性は十分あります。\n\n#プリンシプル #採用 #新卒 #就活 #マーケティング"
     }
   ]
 };
 
-const CAT = {
+// ── Category colors ───────────────────────────────────────────────
+var CAT = {
   '成長':       { bg: '#e0f2fe', fg: '#0369a1' },
   '技術':       { bg: '#ede9fe', fg: '#6d28d9' },
   'カルチャー': { bg: '#fef3c7', fg: '#92400e' },
@@ -241,11 +276,13 @@ const CAT = {
 
 var sel = null;
 var tab = 'short';
+var isLoading = false;
 
 function cc(c)  { return CAT[c] || { bg: '#f1f5f9', fg: '#475569' }; }
 function e(s)   { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function pad(n) { return ('0' + n).slice(-2); }
 
+// ── Render ────────────────────────────────────────────────────────
 function renderStatus() {
   var el = document.getElementById('hd-row');
   if (DATA.last_updated) {
@@ -255,7 +292,7 @@ function renderStatus() {
   } else {
     el.innerHTML =
       '<span class="badge-sample">○ サンプルデータ表示中</span>' +
-      '<span class="hd-meta">analyze_trends.py を実行すると実データに更新されます</span>';
+      '<span class="hd-meta">「🔄 最新データに更新」で実データを取得</span>';
   }
 }
 
@@ -341,6 +378,70 @@ function doCopy() {
   }
 }
 
+// ── Update button ─────────────────────────────────────────────────
+function setBtn(state, text) {
+  var btn = document.getElementById('update-btn');
+  btn.className = 'update-btn' + (state ? ' ' + state : '');
+  btn.disabled  = (state === 'loading');
+  if (state === 'loading') {
+    btn.innerHTML = '<span class="spinner"></span>' + text;
+  } else {
+    btn.innerHTML = text;
+  }
+}
+
+async function doUpdate() {
+  if (isLoading) return;
+  isLoading = true;
+  sel = null;
+  tab = 'short';
+
+  var cardsEl = document.getElementById('cards');
+  var pvEl    = document.getElementById('pv');
+
+  setBtn('loading', ' Slackから取得・分析中（約20秒）...');
+  cardsEl.classList.add('loading');
+  pvEl.innerHTML =
+    '<div class="empty">' +
+      '<div class="empty-icon">⏳</div>' +
+      '<div>Slack データ取得中...</div>' +
+      '<div style="font-size:12px;margin-top:6px;color:#64748b">Gemini で切り口を生成しています</div>' +
+    '</div>';
+
+  try {
+    var res  = await fetch('/api/update');
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'サーバーエラー');
+
+    DATA = data;
+    renderStatus();
+    cardsEl.classList.remove('loading');
+    renderCards();
+    renderPreview();
+
+    setBtn('success', '✅ 更新完了!');
+    setTimeout(function() {
+      setBtn('', '🔄 最新データに更新');
+      isLoading = false;
+    }, 2500);
+
+  } catch(err) {
+    cardsEl.classList.remove('loading');
+    pvEl.innerHTML =
+      '<div class="empty">' +
+        '<div class="empty-icon">❌</div>' +
+        '<div>エラーが発生しました</div>' +
+        '<div style="font-size:12px;color:#ef4444;margin-top:6px;max-width:300px;line-height:1.6">' + err.message + '</div>' +
+      '</div>';
+    setBtn('err', '❌ 再試行する');
+    setTimeout(function() {
+      setBtn('', '🔄 最新データに更新');
+      isLoading = false;
+    }, 5000);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────
 renderStatus();
 renderCards();
 renderPreview();
