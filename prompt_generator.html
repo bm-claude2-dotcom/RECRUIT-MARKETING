@@ -3,14 +3,18 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>採用SNS 自動ネタ帳 | Principle</title>
+<title>採用コンテンツ ライブ生成 | Principle</title>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <style>
-  html, body { margin: 0; padding: 0; background: #f6f8fb; }
+  html, body { margin: 0; padding: 0; background: #f0f4f8; }
   body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; }
   *, *::before, *::after { box-sizing: border-box; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 2.5px solid #dde3ea; border-top-color: #1f6feb; border-radius: 50%; animation: spin 0.75s linear infinite; vertical-align: middle; }
+  .cursor  { display: inline-block; width: 2px; height: 1.05em; background: #1f6feb; margin-left: 2px; vertical-align: text-bottom; animation: blink 0.8s step-end infinite; }
 </style>
 </head>
 <body>
@@ -18,358 +22,534 @@
 
 <script type="text/babel" data-presets="react">
 const useState = React.useState;
+const useRef   = React.useRef;
 
-// <<AUTO_ANALYSIS_DATA_START>>
-const DEFAULT_ANALYSIS = {
-  "last_updated": null,
-  "slack_status": {
-    "company_messages": 0,
-    "competitor_messages": 0
-  },
-  "recent_events": [
-    {
-      "title": "サンプル：入社3ヶ月メンバーの初勉強会LT登壇",
-      "date": "今週水曜",
-      "summary": "入社して3ヶ月のメンバーが、業務で習得したGA4のデータ分析手法を社内勉強会でLT登壇。先輩社員からの鋭い質問が飛び交い、活発な議論が展開されました。本人も「登壇を通じてより深く理解できた」とコメント。",
-      "source_topic": "デベロッパーchでのスライド共有より",
-      "sns_draft": "入社3ヶ月のメンバーが社内勉強会でLT登壇✨「失敗してもいい、挑戦が成長につながる」という文化が若手の背中を押します。プリンシプルでは自立したプロフェッショナルへの成長を全力でサポート中。 #企業公式中の人 #採用 #Principle"
-    },
-    {
-      "title": "サンプル：26卒内定者との懇親会",
-      "date": "先週金曜",
-      "summary": "26卒内定者を迎えた懇親会を開催。現場社員と内定者が和気あいあいと交流し、「実際の仕事のリアル」を本音で語り合う場となりました。内定者からは「入社が楽しみになった」との声が多数。",
-      "source_topic": "採用チャンネルの報告投稿より",
-      "sns_draft": "26卒の内定者と懇親会を開催🎉 現場社員がリアルな仕事の話を赤裸々に語る場に。「誰と働くか」を大切にしているプリンシプルらしい時間でした。来春一緒に働くのが楽しみです！ #企業公式中の人 #26卒 #Principle #採用"
+/* ─── 定数 ──────────────────────────────────────────────────── */
+const STORAGE_KEY   = "principle_gemini_key";
+const SLACK_CACHE   = "principle_slack_cache";
+const GEMINI_BASE   = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash";
+
+const COMPANY_CTX = `【株式会社プリンシプル（Principle Co.,Ltd.）】
+・事業: データ解析を軸としたデジタルマーケティング（GA4・GTM・BigQuery・SEO・Web広告など）
+・Mission: データとアクションをつなぎ、よりよい世界を実現します
+・Vision: 世界で最も信頼されるマーケティングDXパートナー
+・Value: 自立したプロフェッショナル / Win-Win / 世界基準・多様性
+・従業員数: 約100名、東京都千代田区
+・ターゲット: 新卒・大学3-4年生。「誰と働くか」「成長できるか」「入社後のリアル」「ビジョンが叶うか」
+・トンマナ: 誠実・等身大・データドリブン。煽らない・誇張しない。`;
+
+/* ─── Gemini API ─────────────────────────────────────────────── */
+async function callGemini(apiKey, prompt) {
+  var res = await fetch(GEMINI_BASE + ":generateContent?key=" + apiKey, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.8, maxOutputTokens: 2048 }
+    })
+  });
+  if (!res.ok) {
+    var err = await res.json().catch(function() { return {}; });
+    throw new Error(err.error ? err.error.message : "HTTP " + res.status);
+  }
+  var json = await res.json();
+  return json.candidates[0].content.parts[0].text;
+}
+
+async function streamGemini(apiKey, prompt, onChunk, signal) {
+  var res = await fetch(GEMINI_BASE + ":streamGenerateContent?alt=sse&key=" + apiKey, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.9, maxOutputTokens: 1024 }
+    }),
+    signal: signal
+  });
+  if (!res.ok) {
+    var err = await res.json().catch(function() { return {}; });
+    throw new Error(err.error ? err.error.message : "HTTP " + res.status);
+  }
+  var reader  = res.body.getReader();
+  var decoder = new TextDecoder();
+  var buf = "";
+  while (true) {
+    var readResult = await reader.read();
+    if (readResult.done) break;
+    buf += decoder.decode(readResult.value, { stream: true });
+    var lines = buf.split("\n");
+    buf = lines.pop() || "";
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.indexOf("data: ") === 0) {
+        var raw = line.slice(6).trim();
+        if (raw === "[DONE]") continue;
+        try {
+          var chunk = JSON.parse(raw);
+          var text = chunk.candidates &&
+                     chunk.candidates[0] &&
+                     chunk.candidates[0].content &&
+                     chunk.candidates[0].content.parts &&
+                     chunk.candidates[0].content.parts[0].text || "";
+          if (text) onChunk(text);
+        } catch(_) {}
+      }
     }
-  ],
-  "market_trends": [
-    { "theme": "誰と働く(社員・カルチャー)", "own_pct": 33, "comp_pct": 57, "gap": 24 },
-    { "theme": "成長・育成", "own_pct": 42, "comp_pct": 29, "gap": -13 },
-    { "theme": "入社後リアル(仕事・1日)", "own_pct": 8, "comp_pct": 57, "gap": 49 },
-    { "theme": "選考・就活", "own_pct": 25, "comp_pct": 29, "gap": 4 },
-    { "theme": "ビジョン・理念", "own_pct": 25, "comp_pct": 0, "gap": -25 },
-    { "theme": "事業・専門性", "own_pct": 42, "comp_pct": 14, "gap": -28 },
-    { "theme": "働き方・制度", "own_pct": 17, "comp_pct": 0, "gap": -17 },
-    { "theme": "多様性・グローバル", "own_pct": 8, "comp_pct": 0, "gap": -8 }
-  ]
-};
-// <<AUTO_ANALYSIS_DATA_END>>
+  }
+}
 
+function msgToText(messages, max) {
+  return (messages || []).slice(0, max).map(function(m) { return m.text; }).join("\n---\n");
+}
+
+/* ─── App ────────────────────────────────────────────────────── */
 function App() {
-  const dataState = useState(DEFAULT_ANALYSIS);
-  const data = dataState[0];
-  const setData = dataState[1];
+  /* API Key */
+  var apiKeyInitial = function() { return localStorage.getItem(STORAGE_KEY) || ""; };
+  var apiKeyState   = useState(apiKeyInitial);
+  var apiKey        = apiKeyState[0];
+  var setApiKey     = apiKeyState[1];
 
-  const copiedIdxState = useState(null);
-  const copiedIdx = copiedIdxState[0];
-  const setCopiedIdx = copiedIdxState[1];
+  var apiKeyInputState = useState(apiKeyInitial);
+  var apiKeyInput      = apiKeyInputState[0];
+  var setApiKeyInput   = apiKeyInputState[1];
 
-  const showTrendsState = useState(false);
-  const showTrends = showTrendsState[0];
-  const setShowTrends = showTrendsState[1];
+  var showKeyState = useState(false);
+  var showKey      = showKeyState[0];
+  var setShowKey   = showKeyState[1];
 
-  const showLoaderState = useState(false);
-  const showLoader = showLoaderState[0];
-  const setShowLoader = showLoaderState[1];
+  /* Slack Data */
+  var slackInitial = function() {
+    try { var r = localStorage.getItem(SLACK_CACHE); return r ? JSON.parse(r) : null; }
+    catch(_) { return null; }
+  };
+  var slackState = useState(slackInitial);
+  var slackData  = slackState[0];
+  var setSlackData = slackState[1];
 
-  const pasteTextState = useState("");
-  const pasteText = pasteTextState[0];
-  const setPasteText = pasteTextState[1];
+  /* Angles */
+  var anglesState     = useState(null);
+  var angles          = anglesState[0];
+  var setAngles       = anglesState[1];
 
-  const loadMsgState = useState("");
-  const loadMsg = loadMsgState[0];
-  const setLoadMsg = loadMsgState[1];
+  var loadingAnglesState = useState(false);
+  var loadingAngles      = loadingAnglesState[0];
+  var setLoadingAngles   = loadingAnglesState[1];
 
-  const hasRealData = !!data.last_updated;
-  const events = data.recent_events || [];
-  const trends = (data.market_trends || []).slice().sort(function(a, b) { return (b.gap || 0) - (a.gap || 0); });
-  const status = data.slack_status || {};
+  /* Content */
+  var selectedState   = useState(null);
+  var selectedAngle   = selectedState[0];
+  var setSelectedAngle = selectedState[1];
 
-  function copyDraft(text, idx) {
-    if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(text || "").then(function() {
-      setCopiedIdx(idx);
-      setTimeout(function() { setCopiedIdx(null); }, 2000);
-    });
+  var contentState = useState("");
+  var content      = contentState[0];
+  var setContent   = contentState[1];
+
+  var streamingState = useState(false);
+  var isStreaming    = streamingState[0];
+  var setIsStreaming = streamingState[1];
+
+  /* UI */
+  var copiedState = useState(false);
+  var copied      = copiedState[0];
+  var setCopied   = copiedState[1];
+
+  var errorState = useState(null);
+  var error      = errorState[0];
+  var setError   = errorState[1];
+
+  var abortRef   = useRef(null);
+  var contentRef = useRef(null);
+
+  /* ── API Key 保存 ── */
+  function saveApiKey() {
+    var key = apiKeyInput.trim();
+    if (!key) return;
+    localStorage.setItem(STORAGE_KEY, key);
+    setApiKey(key);
+    setError(null);
   }
 
-  function applyData(obj) {
-    if (!obj || !Array.isArray(obj.recent_events)) {
-      setLoadMsg("⚠ 形式が違います（recent_events 配列が見当たりません）");
-      return;
-    }
-    setData(obj);
-    setLoadMsg("✓ データを反映しました（" + (obj.last_updated || "日付不明") + "）");
-    setShowLoader(false);
-    setPasteText("");
-  }
-
-  function loadFromPaste() {
-    try { applyData(JSON.parse(pasteText)); }
-    catch(e) { setLoadMsg("⚠ JSONエラー: " + e.message); }
-  }
-
-  function loadFromFile(ev) {
+  /* ── ファイル読み込み ── */
+  function loadFile(ev) {
     var file = ev.target.files && ev.target.files[0];
     if (!file) return;
     var reader = new FileReader();
     reader.onload = function() {
-      try { applyData(JSON.parse(reader.result)); }
-      catch(e) { setLoadMsg("⚠ ファイルエラー: " + e.message); }
+      try {
+        var obj = JSON.parse(reader.result);
+        if (!obj.own_channel || !obj.comp_channel) {
+          throw new Error("形式が違います（own_channel / comp_channel が見当たりません）");
+        }
+        setSlackData(obj);
+        try { localStorage.setItem(SLACK_CACHE, JSON.stringify(obj)); } catch(_) {}
+        setAngles(null); setSelectedAngle(null); setContent(""); setError(null);
+      } catch(e) { setError("ファイルエラー: " + e.message); }
     };
     reader.readAsText(file);
+    ev.target.value = "";
   }
 
+  function clearSlack() {
+    localStorage.removeItem(SLACK_CACHE);
+    setSlackData(null); setAngles(null); setSelectedAngle(null); setContent("");
+  }
+
+  /* ── 10切り口 生成 ── */
+  async function generateAngles() {
+    if (!apiKey || !slackData || loadingAngles) return;
+    setLoadingAngles(true);
+    setAngles(null); setSelectedAngle(null); setContent(""); setError(null);
+
+    var own  = slackData.own_channel;
+    var comp = slackData.comp_channel;
+    var prompt =
+      "あなたは株式会社プリンシプルの採用マーケティング専門家です。JSONのみを返してください（コードブロック・説明文は不要）。\n\n" +
+      COMPANY_CTX + "\n\n" +
+      "【自社Slackメッセージ（" + own.label + "） - " + own.message_count + "件 / 取得日: " + slackData.fetched_at + "】\n" +
+      (msgToText(own.messages, 150) || "(メッセージなし)") + "\n\n" +
+      "【参照Slackメッセージ（" + comp.label + "） - " + comp.message_count + "件】\n" +
+      (msgToText(comp.messages, 100) || "(メッセージなし)") + "\n\n" +
+      "## 指示\n" +
+      "上記のSlackデータと採用マーケティングのトレンドを踏まえ、採用SNS・採用ブログに使える切り口を10個提案してください。\n\n" +
+      "## 条件\n" +
+      "- 10個はそれぞれ異なるアプローチ（社員/成長/カルチャー/技術/リアル/ビジョン など複数軸）\n" +
+      "- 就活生の「誰と働くか」「成長できるか」「入社後のリアル」「ビジョンが叶うか」に応えるもの\n" +
+      "- プリンシプルらしさ（データドリブン・等身大・Win-Win）が出る切り口\n" +
+      "- 競合の採用コンテンツトレンドも意識する\n\n" +
+      "## 出力JSON\n" +
+      '{"angles":[{"id":1,"title":"切り口タイトル（20文字以内）","hook":"フック・狙い（60文字以内）","category":"カテゴリ（働く人/成長/カルチャー/技術/リアルなど）"},...10件]}';
+
+    try {
+      var raw = await callGemini(apiKey, prompt);
+      raw = raw.replace(/^```(?:json)?\s*/m, "").replace(/\s*```\s*$/m, "").trim();
+      var m = raw.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error("JSONを抽出できませんでした");
+      var result = JSON.parse(m[0]);
+      if (!Array.isArray(result.angles)) throw new Error("angles 配列が見つかりません");
+      setAngles(result.angles.slice(0, 10));
+    } catch(e) {
+      setError("切り口生成エラー: " + e.message);
+    } finally {
+      setLoadingAngles(false);
+    }
+  }
+
+  /* ── コンテンツ ストリーミング生成 ── */
+  async function generateContent(angle) {
+    if (!apiKey) return;
+    if (abortRef.current) abortRef.current.abort();
+    var ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    setSelectedAngle(angle);
+    setContent("");
+    setIsStreaming(true);
+    setError(null);
+    setCopied(false);
+
+    var ownText = slackData ? msgToText(slackData.own_channel.messages, 80) : "";
+    var prompt =
+      "あなたは株式会社プリンシプルの採用マーケティング担当ライターです。\n\n" +
+      COMPANY_CTX + "\n\n" +
+      "## 選択された切り口\n" +
+      "タイトル: " + angle.title + "\n" +
+      "フック・狙い: " + angle.hook + "\n" +
+      "カテゴリ: " + (angle.category || "採用") + "\n\n" +
+      (ownText ? "## 元になったSlackデータ（参考）\n" + ownText + "\n\n" : "") +
+      "## 指示\n" +
+      "この切り口で、採用ブログ・長文SNS投稿に使える本格的なテキストコンテンツを生成してください。\n\n" +
+      "## 条件\n" +
+      "- 300文字程度（200〜420文字）\n" +
+      "- 就活生に響く等身大の言葉・誠実なトーン\n" +
+      "- 社内の熱量・カルチャーが伝わる具体的な表現\n" +
+      "- 確証のない情報には [要確認: ◯◯] と明示\n" +
+      "- 末尾にハッシュタグ3〜5個（#企業公式中の人 #採用 #Principle 等）\n" +
+      "テキストのみ出力してください（「本文:」「出力:」などのラベルは不要）。";
+
+    try {
+      await streamGemini(apiKey, prompt, function(chunk) {
+        setContent(function(prev) { return prev + chunk; });
+      }, ctrl.signal);
+    } catch(e) {
+      if (e.name !== "AbortError") setError("コンテンツ生成エラー: " + e.message);
+    } finally {
+      setIsStreaming(false);
+    }
+
+    setTimeout(function() {
+      if (contentRef.current) contentRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }
+
+  function copyContent() {
+    if (!content || !navigator.clipboard) return;
+    navigator.clipboard.writeText(content).then(function() {
+      setCopied(true);
+      setTimeout(function() { setCopied(false); }, 2000);
+    });
+  }
+
+  /* ── 派生値 ── */
+  var isReady = !!(apiKey && slackData);
+  var own  = slackData && slackData.own_channel;
+  var comp = slackData && slackData.comp_channel;
+  var charLen   = content.length;
+  var charColor = charLen > 420 ? "#c2541f" : charLen > 320 ? "#9a6700" : "#157a51";
+
+  /* ─── UI ───────────────────────────────────────────────────── */
   return (
     <div style={s.wrap}>
 
-      {/* ─── ヘッダー ─────────────────────────────────── */}
+      {/* ヘッダー */}
       <header style={s.hd}>
         <div style={s.hdMark}>PRINCIPLE</div>
-        <h1 style={s.h1}>採用SNS 自動ネタ帳</h1>
-        <p style={s.hdSub}>Slackの社内活動から採用SNS投稿ネタを自動生成。コピーしてそのまま投稿できます。</p>
-
-        <div style={s.statusBar}>
-          <span style={Object.assign({}, s.badge, hasRealData ? s.badgeReal : s.badgeSample)}>
-            {hasRealData ? "● Slack自動取得済み" : "○ 初期サンプル（analyze_trends.py 未実行）"}
-          </span>
-          {hasRealData && (
-            <span style={s.statusMeta}>最終更新: {data.last_updated}</span>
-          )}
-          {(status.company_messages > 0 || status.competitor_messages > 0) && (
-            <span style={s.statusMeta}>
-              自社 {status.company_messages}件 / 参照 {status.competitor_messages}件
-            </span>
-          )}
-        </div>
-
-        <div style={s.brandNote}>
-          ★ <code style={s.inlineCode}>analyze_trends.py</code> を実行するとSlackの最新データがこのHTMLに自動で書き込まれます
-        </div>
-
-        <div style={s.dataRow}>
-          <button style={s.dataBtn} onClick={function() { setShowLoader(!showLoader); }}>
-            {showLoader ? "閉じる" : "手動でデータ更新"}
-          </button>
-        </div>
-
-        {showLoader && (
-          <div style={s.loader}>
-            <p style={s.loaderHelp}>analyze_trends.py の出力JSONを貼り付けるか、ファイルを選択してください。</p>
-            <label style={s.fileBtn}>
-              JSONファイルを選択
-              <input type="file" accept=".json" onChange={loadFromFile} hidden />
-            </label>
-            <div style={s.pasteArea}>
-              <textarea
-                style={s.pasteTA}
-                placeholder="JSONをここに貼り付け"
-                value={pasteText}
-                onChange={function(e) { setPasteText(e.target.value); }}
-              />
-              <button
-                style={Object.assign({}, s.pasteBtn, { opacity: pasteText.trim() ? 1 : 0.4 })}
-                onClick={loadFromPaste}
-                disabled={!pasteText.trim()}
-              >
-                貼り付けたJSONを反映
-              </button>
-            </div>
-          </div>
-        )}
-        {loadMsg && <div style={s.loadMsg}>{loadMsg}</div>}
+        <h1 style={s.h1}>採用コンテンツ ライブ生成ツール</h1>
+        <p style={s.hdSub}>Slackの社内データ × Gemini AI で、採用SNS・ブログネタをリアルタイム生成します</p>
       </header>
 
-      {/* ─── 直近イベント & SNS投稿案 ─────────────────── */}
-      <section>
-        <div style={s.sectionHd}>
-          <h2 style={s.h2}>直近の社内イベント &amp; SNS投稿案</h2>
-          <span style={s.countBadge}>{events.length}件</span>
-        </div>
-
-        {events.length === 0 && (
-          <div style={s.emptyState}>
-            イベントが見つかりません。<code style={s.inlineCode}>analyze_trends.py</code> を実行してください。
+      {/* STEP 1 API Key */}
+      <section style={s.card}>
+        <span style={s.stepTag}>STEP 1</span>
+        <h2 style={s.h2}>Gemini API キーを設定</h2>
+        <p style={s.lead}>入力したキーはブラウザの localStorage にのみ保存され、外部サーバーには送信されません。</p>
+        <div style={s.keyRow}>
+          <div style={s.keyWrap}>
+            <input
+              style={s.keyInput}
+              type={showKey ? "text" : "password"}
+              placeholder="AIzaSy... または AQ...."
+              value={apiKeyInput}
+              onChange={function(e) { setApiKeyInput(e.target.value); }}
+              onKeyDown={function(e) { if (e.key === "Enter") saveApiKey(); }}
+            />
+            <button style={s.eyeBtn} onClick={function() { setShowKey(!showKey); }}>
+              {showKey ? "🙈" : "👁"}
+            </button>
           </div>
-        )}
-
-        {events.map(function(ev, i) {
-          var draft = ev.sns_draft || "";
-          var charLen = draft.length;
-          var charColor = charLen > 160 ? "#c2541f" : charLen > 130 ? "#9a6700" : c.ink2;
-          return (
-            <div key={i} style={s.eventCard}>
-              <div style={s.eventHeader}>
-                <div style={s.eventTitle}>{ev.title}</div>
-                <span style={s.dateBadge}>{ev.date}</span>
-              </div>
-
-              <p style={s.eventSummary}>{ev.summary}</p>
-
-              {ev.source_topic && (
-                <div style={s.sourceRow}>
-                  <span style={s.sourceIcon}>💬</span>
-                  <span style={s.sourceText}>{ev.source_topic}</span>
-                </div>
-              )}
-
-              <div style={s.snsDraftBox}>
-                <div style={s.snsDraftHeader}>
-                  <span style={s.snsDraftLabel}>SNS 投稿案</span>
-                  <div style={s.snsTagRow}>
-                    <span style={s.snsTag}>X</span>
-                    <span style={s.snsTag}>LinkedIn</span>
-                  </div>
-                </div>
-                <div style={s.snsDraftText}>{draft}</div>
-                <div style={s.snsFooter}>
-                  <span style={Object.assign({}, s.charCount, { color: charColor })}>
-                    {charLen}文字{charLen > 160 ? " ⚠ 長め" : charLen > 140 ? " △" : " ✓"}
-                  </span>
-                  <button
-                    style={Object.assign({}, s.copyBtn, copiedIdx === i ? s.copyBtnOn : {})}
-                    onClick={function() { copyDraft(draft, i); }}
-                  >
-                    {copiedIdx === i ? "✓ コピー完了" : "📋 コピー"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+          <button
+            style={Object.assign({}, s.saveBtn, (!apiKeyInput.trim() || apiKeyInput.trim() === apiKey) ? { opacity: 0.4 } : {})}
+            onClick={saveApiKey}
+            disabled={!apiKeyInput.trim() || apiKeyInput.trim() === apiKey}
+          >
+            保存
+          </button>
+        </div>
+        {apiKey && <div style={s.savedNote}>✓ APIキー保存済み</div>}
       </section>
 
-      {/* ─── 市場トレンド（折りたたみ） ───────────────── */}
-      <section style={s.trendsCard}>
-        <button style={s.trendsToggle} onClick={function() { setShowTrends(!showTrends); }}>
-          <span>市場トレンド分析（採用テーマ別 自社 vs 競合）</span>
-          <span style={s.trendsArrow}>{showTrends ? "▲ 閉じる" : "▼ 展開"}</span>
-        </button>
+      {/* STEP 2 Slack Data */}
+      <section style={s.card}>
+        <span style={s.stepTag}>STEP 2</span>
+        <h2 style={s.h2}>Slackデータを読み込む</h2>
+        <p style={s.lead}>
+          <code style={s.code}>analyze_trends.py</code> を実行して生成された
+          <code style={s.code}>slack_raw_data.json</code> を選択してください。読み込んだデータはブラウザにキャッシュされます。
+        </p>
+        <div style={s.fileRow}>
+          <label style={s.fileBtn}>
+            📂 slack_raw_data.json を選択
+            <input type="file" accept=".json" onChange={loadFile} hidden />
+          </label>
+          {slackData && (
+            <button style={s.clearBtn} onClick={clearSlack}>🗑 クリア</button>
+          )}
+        </div>
+        {slackData && (
+          <div style={s.dataInfo}>
+            <span style={s.dataBadge}>✓ 読み込み済み</span>
+            <span style={s.dataMeta}>{slackData.fetched_at} 取得</span>
+            <span style={s.dataMeta}>自社 {own && own.message_count}件</span>
+            <span style={s.dataMeta}>参照 {comp && comp.message_count}件</span>
+          </div>
+        )}
+      </section>
 
-        {showTrends && (
-          <div style={s.trendsBody}>
-            <p style={s.trendsLead}>各テーマに言及したメッセージの割合。差分が大きいテーマが発信の空白です。</p>
-            {trends.length === 0 && (
-              <p style={{ color: c.ink2, fontSize: 13 }}>データがありません。analyze_trends.py を実行してください。</p>
-            )}
-            {trends.map(function(t, i) {
-              var gap = t.gap || 0;
-              var chipStyle = gap >= 20 ? s.chipGap : gap <= -20 ? s.chipStrong : s.chipEven;
-              var isLast = i === trends.length - 1;
+      {/* STEP 3 Generate */}
+      <section style={s.card}>
+        <span style={s.stepTag}>STEP 3</span>
+        <h2 style={s.h2}>10個の切り口を生成</h2>
+        <p style={s.lead}>Gemini が Slack データを分析し、採用コンテンツの切り口を10個提案します。</p>
+        <button
+          style={Object.assign({}, s.genBtn, (!isReady || loadingAngles) ? { opacity: 0.4, cursor: "not-allowed" } : {})}
+          onClick={generateAngles}
+          disabled={!isReady || loadingAngles}
+        >
+          {loadingAngles
+            ? <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                <span className="spinner" />Gemini が切り口を考えています...
+              </span>
+            : "▶ 10個の切り口を生成する"
+          }
+        </button>
+        {!apiKey && <p style={s.hint}>← STEP 1 で API キーを設定してください</p>}
+        {apiKey && !slackData && <p style={s.hint}>← STEP 2 で Slack データを読み込んでください</p>}
+      </section>
+
+      {/* 10切り口 グリッド */}
+      {angles && (
+        <section style={s.anglesSection}>
+          <div style={s.anglesSectionHd}>
+            <h2 style={Object.assign({}, s.h2, { fontSize: 18, margin: 0 })}>生成された切り口</h2>
+            <span style={s.cntBadge}>{angles.length}件</span>
+            <button
+              style={s.regenBtn}
+              onClick={generateAngles}
+              disabled={loadingAngles}
+            >
+              🔄 再生成
+            </button>
+          </div>
+          <p style={Object.assign({}, s.lead, { marginTop: 6 })}>切り口をクリックすると、その場でコンテンツをリアルタイム生成します。</p>
+          <div style={s.anglesGrid}>
+            {angles.map(function(a) {
+              var on = selectedAngle && selectedAngle.id === a.id;
               return (
-                <div key={t.theme} style={Object.assign({}, s.trendRow, isLast ? { borderBottom: "none", marginBottom: 0, paddingBottom: 0 } : {})}>
-                  <div style={s.trendName}>{t.theme}</div>
-                  <div style={s.trendBars}>
-                    <div style={s.barLine}>
-                      <span style={s.barTag}>自社</span>
-                      <div style={s.track}><div style={Object.assign({}, s.fill, s.fillOwn, { width: (t.own_pct || 0) + "%" })} /></div>
-                      <span style={s.barVal}>{t.own_pct || 0}%</span>
-                    </div>
-                    <div style={s.barLine}>
-                      <span style={s.barTag}>競合</span>
-                      <div style={s.track}><div style={Object.assign({}, s.fill, s.fillComp, { width: (t.comp_pct || 0) + "%" })} /></div>
-                      <span style={s.barVal}>{t.comp_pct || 0}%</span>
-                    </div>
+                <button
+                  key={a.id}
+                  style={Object.assign({}, s.angleCard, on ? s.angleCardOn : {})}
+                  onClick={function() { generateContent(a); }}
+                >
+                  <div style={s.angleTop}>
+                    <span style={Object.assign({}, s.numBadge, on ? s.numBadgeOn : {})}>
+                      {("0" + a.id).slice(-2)}
+                    </span>
+                    <span style={Object.assign({}, s.catTag, on ? { background: "#ddf3e8", color: "#157a51" } : {})}>
+                      {a.category || "採用"}
+                    </span>
                   </div>
-                  <span style={Object.assign({}, s.gapChip, chipStyle)}>
-                    {gap >= 0 ? "+" : ""}{gap}pt
-                  </span>
-                </div>
+                  <div style={s.angleTitle}>{a.title}</div>
+                  <div style={s.angleHook}>{a.hook}</div>
+                  {on && isStreaming && <div style={s.genningNote}>生成中 ✍️</div>}
+                </button>
               );
             })}
           </div>
-        )}
-      </section>
+        </section>
+      )}
+
+      {/* コンテンツ出力 */}
+      {(selectedAngle !== null) && (
+        <section ref={contentRef} style={s.contentSection}>
+          <div style={s.contentHd}>
+            <div>
+              <h2 style={Object.assign({}, s.h2, { fontSize: 17, margin: 0 })}>生成されたコンテンツ</h2>
+              {selectedAngle && (
+                <p style={s.selectedLabel}>切り口: {selectedAngle.title}</p>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {!isStreaming && content && (
+                <button style={s.regenSmBtn} onClick={function() { generateContent(selectedAngle); }}>
+                  🔄 再生成
+                </button>
+              )}
+              <button
+                style={Object.assign({}, s.copyBtn, copied ? s.copyBtnOn : {}, !content ? { opacity: 0.35 } : {})}
+                onClick={copyContent}
+                disabled={!content}
+              >
+                {copied ? "✓ コピー完了" : "📋 コピー"}
+              </button>
+            </div>
+          </div>
+          <div style={s.contentBody}>
+            {content
+              ? <span>{content}{isStreaming && <span className="cursor" />}</span>
+              : <span style={{ color: "#a0aab5" }}>
+                  {isStreaming
+                    ? <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span className="spinner" />生成しています...</span>
+                    : "ここにコンテンツが表示されます"
+                  }
+                </span>
+            }
+          </div>
+          {!isStreaming && content && (
+            <div style={s.contentFooter}>
+              <span style={{ fontSize: 12, color: charColor, fontWeight: 600 }}>{charLen}文字</span>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* エラー */}
+      {error && (
+        <div style={s.errBox}>
+          <span><strong>エラー:</strong> {error}</span>
+          <button style={s.errClose} onClick={function() { setError(null); }}>×</button>
+        </div>
+      )}
 
       <footer style={s.footer}>
-        {hasRealData
-          ? "Slackデータ自動取得（" + data.last_updated + "）。"
-          : "初期サンプルデータです。analyze_trends.py を実行してください。"
-        }
-        競合メッセージは転用していません（テーマ傾向の把握のみ）。
+        APIキーとSlackデータはブラウザ内にのみ保存されます（外部サーバーへの送信なし）。
+        Gemini API には直接ブラウザからリクエストします。
       </footer>
     </div>
   );
 }
 
-const c = {
-  ink: "#14181f", ink2: "#5b6573", line: "#e3e7ee", bg: "#f6f8fb",
-  own: "#1f6feb", comp: "#e8743b", accent: "#1f6feb"
-};
-const s = {
-  wrap: { fontFamily: '-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif', background: c.bg, color: c.ink, maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px", lineHeight: 1.6, minHeight: "100vh" },
+/* ─── スタイル ───────────────────────────────────────────────── */
+var c = { ink: "#14181f", ink2: "#5b6573", line: "#e3e7ee", bg: "#f0f4f8", accent: "#1f6feb" };
+var s = {
+  wrap: { maxWidth: 900, margin: "0 auto", padding: "28px 20px 60px", lineHeight: 1.6, fontFamily: '-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif', color: c.ink },
 
   hd: { marginBottom: 28 },
   hdMark: { fontSize: 11, letterSpacing: "0.28em", fontWeight: 700, color: c.accent, marginBottom: 10 },
   h1: { fontSize: 26, margin: "0 0 8px", letterSpacing: "-0.01em" },
-  hdSub: { color: c.ink2, fontSize: 14, margin: "0 0 14px" },
+  hdSub: { color: c.ink2, fontSize: 14, margin: 0 },
 
-  statusBar: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 },
-  badge: { fontSize: 11, fontWeight: 700, padding: "4px 11px", borderRadius: 999 },
-  badgeSample: { background: "#fff4e0", color: "#9a6700" },
-  badgeReal: { background: "#ddf3e8", color: "#157a51" },
-  statusMeta: { fontSize: 12, color: c.ink2 },
+  card: { background: "#fff", border: "1px solid " + c.line, borderRadius: 14, padding: "22px 22px 20px", marginBottom: 14, position: "relative" },
+  stepTag: { position: "absolute", top: 18, right: 20, fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", color: "#b0bac7", background: c.bg, padding: "3px 9px", borderRadius: 999 },
+  h2: { fontSize: 16, fontWeight: 700, margin: "0 0 4px" },
+  lead: { fontSize: 13, color: c.ink2, margin: "0 0 14px" },
+  code: { fontFamily: "ui-monospace,monospace", fontSize: 12, background: "#f0f4f8", padding: "1px 5px", borderRadius: 4 },
 
-  brandNote: { fontSize: 12, color: "#157a51", background: "#ddf3e8", border: "1px solid #b8e6d0", borderRadius: 8, padding: "8px 12px", marginBottom: 12 },
-  inlineCode: { fontFamily: "ui-monospace,monospace", fontSize: 11.5 },
-  dataRow: { display: "flex", gap: 8, marginBottom: 4 },
-  dataBtn: { fontFamily: "inherit", fontSize: 12, cursor: "pointer", padding: "5px 13px", border: "1px solid " + c.line, borderRadius: 8, background: "#fff", color: c.ink },
+  keyRow: { display: "flex", gap: 8 },
+  keyWrap: { flex: 1, display: "flex", border: "1.5px solid " + c.line, borderRadius: 9, overflow: "hidden", background: "#fff" },
+  keyInput: { flex: 1, fontFamily: "ui-monospace,monospace", fontSize: 13, padding: "9px 12px", border: "none", outline: "none", background: "transparent" },
+  eyeBtn: { padding: "0 13px", border: "none", background: "none", cursor: "pointer", fontSize: 15 },
+  saveBtn: { fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "9px 20px", border: "none", borderRadius: 9, background: c.accent, color: "#fff", cursor: "pointer" },
+  savedNote: { fontSize: 12, color: "#157a51", marginTop: 8 },
 
-  loader: { margin: "8px 0 12px", padding: 16, background: "#fff", border: "1px solid " + c.line, borderRadius: 11 },
-  loaderHelp: { fontSize: 12.5, color: c.ink2, margin: "0 0 12px" },
-  fileBtn: { display: "inline-block", fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: "8px 15px", border: "1.5px solid " + c.accent, color: c.accent, borderRadius: 9, marginBottom: 12 },
-  pasteArea: { display: "flex", flexDirection: "column", gap: 8 },
-  pasteTA: { fontFamily: "ui-monospace,monospace", fontSize: 11.5, width: "100%", minHeight: 80, padding: 10, border: "1px solid " + c.line, borderRadius: 9, resize: "vertical" },
-  pasteBtn: { fontFamily: "inherit", fontSize: 12.5, fontWeight: 600, cursor: "pointer", alignSelf: "flex-start", padding: "8px 15px", border: "none", borderRadius: 9, background: c.accent, color: "#fff" },
-  loadMsg: { fontSize: 12.5, padding: "9px 13px", background: "#f0f5ff", borderRadius: 8, marginBottom: 8 },
+  fileRow: { display: "flex", gap: 10, alignItems: "center", marginBottom: 10 },
+  fileBtn: { display: "inline-block", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "9px 16px", border: "1.5px solid " + c.accent, color: c.accent, borderRadius: 9, background: "#fff" },
+  clearBtn: { fontFamily: "inherit", fontSize: 12, cursor: "pointer", padding: "7px 12px", border: "1px solid " + c.line, borderRadius: 8, background: "#fff", color: c.ink2 },
+  dataInfo: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 12px", background: c.bg, borderRadius: 9 },
+  dataBadge: { fontSize: 12, fontWeight: 700, color: "#157a51" },
+  dataMeta: { fontSize: 12, color: c.ink2 },
 
-  sectionHd: { display: "flex", alignItems: "center", gap: 10, marginBottom: 16 },
-  h2: { fontSize: 18, margin: 0 },
-  countBadge: { fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: c.accent, color: "#fff" },
+  genBtn: { fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer", width: "100%", padding: 16, border: "none", borderRadius: 11, background: c.ink, color: "#fff" },
+  hint: { fontSize: 12, color: "#9a6700", background: "#fff4e0", padding: "7px 12px", borderRadius: 8, marginTop: 10, marginBottom: 0 },
 
-  emptyState: { padding: "32px 20px", textAlign: "center", color: c.ink2, background: "#fff", border: "1px dashed " + c.line, borderRadius: 12, fontSize: 13.5, marginBottom: 16 },
+  anglesSection: { marginBottom: 14 },
+  anglesSectionHd: { display: "flex", alignItems: "center", gap: 10, marginBottom: 2 },
+  cntBadge: { fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: c.accent, color: "#fff" },
+  regenBtn: { fontFamily: "inherit", fontSize: 12, cursor: "pointer", padding: "5px 12px", border: "1px solid " + c.line, borderRadius: 8, background: "#fff", color: c.ink2, marginLeft: "auto" },
 
-  eventCard: { background: "#fff", border: "1px solid " + c.line, borderRadius: 14, marginBottom: 16, overflow: "hidden" },
-  eventHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, padding: "18px 20px 10px" },
-  eventTitle: { fontSize: 16, fontWeight: 700, flex: 1, lineHeight: 1.4 },
-  dateBadge: { fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, background: "#f0f5ff", color: c.accent, whiteSpace: "nowrap", flexShrink: 0, marginTop: 2 },
-  eventSummary: { fontSize: 13.5, color: c.ink, lineHeight: 1.75, margin: 0, padding: "0 20px 12px" },
-  sourceRow: { display: "flex", alignItems: "flex-start", gap: 6, padding: "0 20px 16px" },
-  sourceIcon: { fontSize: 13, flexShrink: 0, marginTop: 1 },
-  sourceText: { fontSize: 12, color: c.ink2, lineHeight: 1.5 },
+  anglesGrid: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 },
+  angleCard: { textAlign: "left", background: "#fff", border: "1.5px solid " + c.line, borderRadius: 12, padding: 16, cursor: "pointer", fontFamily: "inherit" },
+  angleCardOn: { borderColor: c.accent, background: "#f0f7ff", boxShadow: "0 0 0 3px rgba(31,111,235,0.13)" },
+  angleTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  numBadge: { fontSize: 14, fontWeight: 800, color: "#c0cad5", letterSpacing: "0.04em" },
+  numBadgeOn: { color: c.accent },
+  catTag: { fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#f0f4f8", color: c.ink2 },
+  angleTitle: { fontSize: 15, fontWeight: 700, marginBottom: 6, color: c.ink, lineHeight: 1.4 },
+  angleHook: { fontSize: 12.5, color: c.ink2, lineHeight: 1.6 },
+  genningNote: { marginTop: 8, fontSize: 11, color: c.accent, fontWeight: 600 },
 
-  snsDraftBox: { borderTop: "1px solid " + c.line, background: "#f8fafc" },
-  snsDraftHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px 6px" },
-  snsDraftLabel: { fontSize: 10.5, fontWeight: 700, letterSpacing: "0.12em", color: c.accent, textTransform: "uppercase" },
-  snsTagRow: { display: "flex", gap: 6 },
-  snsTag: { fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: "#eef1f6", color: c.ink2 },
-  snsDraftText: { padding: "2px 20px 16px", fontSize: 14.5, lineHeight: 1.8, whiteSpace: "pre-wrap", wordBreak: "break-all", color: c.ink },
-  snsFooter: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px 14px", borderTop: "1px solid " + c.line },
-  charCount: { fontSize: 12, fontWeight: 600 },
-  copyBtn: { fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "8px 20px", border: "1.5px solid " + c.accent, borderRadius: 8, background: c.accent, color: "#fff" },
+  contentSection: { background: "#fff", border: "1px solid " + c.line, borderRadius: 14, overflow: "hidden", marginBottom: 14 },
+  contentHd: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 20px 14px", borderBottom: "1px solid " + c.line, flexWrap: "wrap", gap: 10 },
+  selectedLabel: { fontSize: 12, color: c.ink2, margin: "4px 0 0" },
+  regenSmBtn: { fontFamily: "inherit", fontSize: 12, cursor: "pointer", padding: "6px 12px", border: "1px solid " + c.line, borderRadius: 7, background: "#fff", color: c.ink2 },
+  copyBtn: { fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "7px 20px", border: "1.5px solid " + c.accent, borderRadius: 8, background: c.accent, color: "#fff" },
   copyBtnOn: { background: "#157a51", borderColor: "#157a51" },
+  contentBody: { padding: "20px 22px", fontSize: 15, lineHeight: 1.85, whiteSpace: "pre-wrap", wordBreak: "break-word", minHeight: 100, color: c.ink },
+  contentFooter: { padding: "0 22px 14px", display: "flex", justifyContent: "flex-end" },
 
-  trendsCard: { background: "#fff", border: "1px solid " + c.line, borderRadius: 14, overflow: "hidden", marginBottom: 18 },
-  trendsToggle: { fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", width: "100%", padding: "16px 20px", border: "none", background: "none", textAlign: "left", color: c.ink, display: "flex", justifyContent: "space-between", alignItems: "center" },
-  trendsArrow: { fontSize: 12, color: c.ink2 },
-  trendsBody: { padding: "0 20px 20px", borderTop: "1px solid " + c.line },
-  trendsLead: { fontSize: 13, color: c.ink2, margin: "14px 0 16px" },
-  trendRow: { display: "grid", gridTemplateColumns: "1fr 1.6fr auto", gap: 12, alignItems: "center", paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid " + c.line },
-  trendName: { fontSize: 12.5, fontWeight: 600 },
-  trendBars: { display: "flex", flexDirection: "column", gap: 4 },
-  barLine: { display: "flex", alignItems: "center", gap: 8 },
-  barTag: { fontSize: 10, color: c.ink2, width: 24 },
-  track: { flex: 1, height: 7, background: "#eef1f6", borderRadius: 4, overflow: "hidden" },
-  fill: { height: "100%", borderRadius: 4 },
-  fillOwn: { background: c.own },
-  fillComp: { background: c.comp },
-  barVal: { fontSize: 11, color: c.ink2, width: 30, textAlign: "right" },
-  gapChip: { fontSize: 10, fontWeight: 700, padding: "3px 7px", borderRadius: 999, whiteSpace: "nowrap", textAlign: "center" },
-  chipGap: { background: "#fde8dd", color: "#c2541f" },
-  chipStrong: { background: "#ddf3e8", color: "#157a51" },
-  chipEven: { background: "#eef1f6", color: c.ink2 },
+  errBox: { background: "#fff0f0", border: "1px solid #fcc", borderRadius: 10, padding: "12px 16px", marginBottom: 14, fontSize: 13, color: "#c2541f", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 },
+  errClose: { fontFamily: "inherit", fontSize: 18, cursor: "pointer", border: "none", background: "none", color: "#c2541f", padding: 0, lineHeight: 1, flexShrink: 0 },
 
-  footer: { textAlign: "center", fontSize: 11, color: c.ink2, marginTop: 28 }
+  footer: { textAlign: "center", fontSize: 11, color: "#b0bac7", marginTop: 28, lineHeight: 1.8 }
 };
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
