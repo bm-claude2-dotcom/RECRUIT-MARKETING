@@ -409,7 +409,7 @@ async function doUpdate() {
     '</div>';
 
   try {
-    var res  = await fetch('/api/update');
+    var res  = await fetch('http://127.0.0.1:5000/api/update');
     var data = await res.json();
     if (!res.ok) throw new Error(data.error || 'サーバーエラー');
 
