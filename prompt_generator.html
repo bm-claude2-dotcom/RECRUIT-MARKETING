@@ -180,6 +180,82 @@
     .col-l::-webkit-scrollbar, .col-r::-webkit-scrollbar { width: 4px; }
     .col-l::-webkit-scrollbar-track, .col-r::-webkit-scrollbar-track { background: transparent; }
     .col-l::-webkit-scrollbar-thumb, .col-r::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+
+    /* ── Settings button ──────────────────────────────── */
+    .settings-btn {
+      flex-shrink: 0;
+      background: rgba(255,255,255,0.07);
+      color: rgba(255,255,255,0.7);
+      border: 1.5px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background .2s, color .2s;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .settings-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .settings-btn.unconfigured { border-color: rgba(251,191,36,0.6); color: #fbbf24; }
+
+    /* ── Modal overlay ────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(3px);
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 16px; width: 460px; max-width: 94vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+    .modal-hd {
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: #fff; padding: 20px 24px 16px;
+    }
+    .modal-hd-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .modal-hd-sub   { font-size: 12px; color: #64748b; }
+    .modal-body { padding: 22px 24px; display: flex; flex-direction: column; gap: 16px; }
+    .field label {
+      display: block; font-size: 12px; font-weight: 600;
+      color: #475569; margin-bottom: 5px; letter-spacing: 0.05em;
+    }
+    .field-row { display: flex; gap: 8px; align-items: center; }
+    .field input {
+      flex: 1; border: 1.5px solid #e2e8f0; border-radius: 8px;
+      padding: 9px 12px; font-size: 13px; color: #1e293b; background: #f8fafc;
+      font-family: monospace; outline: none; transition: border-color .15s;
+    }
+    .field input:focus { border-color: #6366f1; background: #fff; }
+    .field input.ok { border-color: #22c55e; }
+    .dot {
+      width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+      background: #e2e8f0; transition: background .3s;
+    }
+    .dot.set   { background: #22c55e; }
+    .dot.unset { background: #f59e0b; }
+    .field-hint { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+    .modal-ft {
+      padding: 0 24px 22px; display: flex; gap: 10px; justify-content: flex-end;
+    }
+    .btn-cancel {
+      background: #f1f5f9; color: #64748b; border: none; border-radius: 8px;
+      padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-cancel:hover { background: #e2e8f0; }
+    .btn-save {
+      background: #6366f1; color: #fff; border: none; border-radius: 8px;
+      padding: 9px 22px; font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: background .2s;
+    }
+    .btn-save:hover:not(:disabled) { background: #4f46e5; }
+    .btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
+    .modal-msg {
+      font-size: 12px; padding: 0 24px 16px; margin-top: -8px;
+      min-height: 18px;
+    }
+    .modal-msg.ok  { color: #16a34a; }
+    .modal-msg.err { color: #dc2626; }
   </style>
 </head>
 <body>
@@ -191,9 +267,45 @@
       <div class="hd-title">採用コンテンツ 生成ノート</div>
       <div class="hd-row" id="hd-row"></div>
     </div>
-    <button class="update-btn" id="update-btn" onclick="doUpdate()">🔄 最新データに更新</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+      <button class="settings-btn unconfigured" id="settings-btn" onclick="openSettings()">⚙️</button>
+      <button class="update-btn" id="update-btn" onclick="doUpdate()">🔄 最新データに更新</button>
+    </div>
   </div>
 </header>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="overlayClick(event)">
+  <div class="modal">
+    <div class="modal-hd">
+      <div class="modal-hd-title">⚙️ API キー設定</div>
+      <div class="modal-hd-sub">入力した値は .env ファイルに保存されます</div>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>SLACK BOT TOKEN</label>
+        <div class="field-row">
+          <input type="password" id="inp-slack" placeholder="xoxb-..." autocomplete="off">
+          <span class="dot" id="dot-slack"></span>
+        </div>
+        <div class="field-hint">Slack API の Bot User OAuth Token（xoxb- から始まる）</div>
+      </div>
+      <div class="field">
+        <label>GEMINI API KEY</label>
+        <div class="field-row">
+          <input type="password" id="inp-gemini" placeholder="AIza..." autocomplete="off">
+          <span class="dot" id="dot-gemini"></span>
+        </div>
+        <div class="field-hint">Google AI Studio で発行した API キー</div>
+      </div>
+    </div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-ft">
+      <button class="btn-cancel" onclick="closeSettings()">キャンセル</button>
+      <button class="btn-save" id="btn-save" onclick="saveCredentials()">保存して接続</button>
+    </div>
+  </div>
+</div>
 
 <div class="layout">
   <div class="col-l">
@@ -378,6 +490,79 @@ function doCopy() {
   }
 }
 
+// ── Credentials / Settings ────────────────────────────────────────
+var credsOk = false;
+
+async function checkCreds() {
+  try {
+    var res  = await fetch('http://127.0.0.1:5000/api/credentials-status');
+    var data = await res.json();
+    credsOk = data.slack_token_set && data.gemini_key_set;
+    var btn = document.getElementById('settings-btn');
+    if (credsOk) {
+      btn.classList.remove('unconfigured');
+      btn.title = '認証情報 設定済み';
+    } else {
+      btn.classList.add('unconfigured');
+      btn.title = '認証情報 未設定 — クリックして設定';
+    }
+    document.getElementById('dot-slack').className  = 'dot ' + (data.slack_token_set ? 'set' : 'unset');
+    document.getElementById('dot-gemini').className = 'dot ' + (data.gemini_key_set  ? 'set' : 'unset');
+  } catch(e) { /* Flask未起動でも握り潰す */ }
+}
+
+function openSettings() {
+  document.getElementById('modal-msg').textContent = '';
+  document.getElementById('modal-msg').className   = 'modal-msg';
+  document.getElementById('modal-overlay').classList.add('open');
+  checkCreds();
+}
+
+function closeSettings() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+
+function overlayClick(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeSettings();
+}
+
+async function saveCredentials() {
+  var slack  = document.getElementById('inp-slack').value.trim();
+  var gemini = document.getElementById('inp-gemini').value.trim();
+  var msgEl  = document.getElementById('modal-msg');
+  var saveBtn = document.getElementById('btn-save');
+
+  if (!slack)  { msgEl.textContent = 'SLACK_BOT_TOKEN を入力してください'; msgEl.className = 'modal-msg err'; return; }
+  if (!gemini) { msgEl.textContent = 'GEMINI_API_KEY を入力してください';  msgEl.className = 'modal-msg err'; return; }
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = '保存中...';
+  msgEl.textContent = '';
+
+  try {
+    var res  = await fetch('http://127.0.0.1:5000/api/set-credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slack_token: slack, gemini_key: gemini })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || '保存に失敗しました');
+
+    msgEl.textContent = '✅ 保存しました！ボタンで更新できます';
+    msgEl.className   = 'modal-msg ok';
+    document.getElementById('inp-slack').classList.add('ok');
+    document.getElementById('inp-gemini').classList.add('ok');
+    await checkCreds();
+    setTimeout(closeSettings, 1400);
+  } catch(err) {
+    msgEl.textContent = '❌ ' + err.message;
+    msgEl.className   = 'modal-msg err';
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '保存して接続';
+  }
+}
+
 // ── Update button ─────────────────────────────────────────────────
 function setBtn(state, text) {
   var btn = document.getElementById('update-btn');
@@ -392,6 +577,7 @@ function setBtn(state, text) {
 
 async function doUpdate() {
   if (isLoading) return;
+  if (!credsOk) { openSettings(); return; }
   isLoading = true;
   sel = null;
   tab = 'short';
@@ -445,6 +631,7 @@ async function doUpdate() {
 renderStatus();
 renderCards();
 renderPreview();
+checkCreds();
 </script>
 </body>
 </html>

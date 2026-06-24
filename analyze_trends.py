@@ -34,7 +34,7 @@ try:
 except ImportError:
     pass
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -155,6 +155,48 @@ def call_gemini(client, prompt: str) -> dict:
 @app.route("/")
 def index():
     return send_from_directory(str(BASE_DIR), "prompt_generator.html")
+
+
+@app.route("/api/credentials-status")
+def api_credentials_status():
+    return jsonify({
+        "slack_token_set": bool(os.environ.get("SLACK_BOT_TOKEN")),
+        "gemini_key_set":  bool(os.environ.get("GEMINI_API_KEY")),
+    })
+
+
+@app.route("/api/set-credentials", methods=["POST"])
+def api_set_credentials():
+    body        = request.get_json(silent=True) or {}
+    slack_token = body.get("slack_token", "").strip()
+    gemini_key  = body.get("gemini_key",  "").strip()
+
+    if not slack_token:
+        return jsonify({"error": "SLACK_BOT_TOKEN が空です"}), 400
+    if not gemini_key:
+        return jsonify({"error": "GEMINI_API_KEY が空です"}), 400
+
+    # .env ファイルに書き込み（既存のキーは上書き、それ以外は保持）
+    env_path = BASE_DIR / ".env"
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    new_lines, saw_slack, saw_gemini = [], False, False
+    for line in lines:
+        if line.startswith("SLACK_BOT_TOKEN="):
+            new_lines.append(f"SLACK_BOT_TOKEN={slack_token}"); saw_slack = True
+        elif line.startswith("GEMINI_API_KEY="):
+            new_lines.append(f"GEMINI_API_KEY={gemini_key}"); saw_gemini = True
+        else:
+            new_lines.append(line)
+    if not saw_slack:  new_lines.append(f"SLACK_BOT_TOKEN={slack_token}")
+    if not saw_gemini: new_lines.append(f"GEMINI_API_KEY={gemini_key}")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+    # 現在の Python プロセスにも即時反映
+    os.environ["SLACK_BOT_TOKEN"] = slack_token
+    os.environ["GEMINI_API_KEY"]  = gemini_key
+
+    print("✅ 認証情報を .env に保存しました")
+    return jsonify({"ok": True})
 
 
 @app.route("/api/update")
